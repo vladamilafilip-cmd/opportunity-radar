@@ -22,22 +22,50 @@ const randomRiskTier = (): RiskTier => {
 };
 
 // Exchanges
-export const EXCHANGES = ['Binance', 'Bybit', 'OKX', 'Bitget', 'Gate.io', 'KuCoin'];
-export const SYMBOLS = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'XRP/USDT', 'DOGE/USDT', 'ARB/USDT', 'OP/USDT', 'AVAX/USDT', 'MATIC/USDT', 'LINK/USDT'];
+export const EXCHANGES = ['Binance', 'Bybit', 'OKX', 'Bitget', 'Gate.io', 'KuCoin', 'MEXC', 'Huobi', 'Kraken', 'Deribit'];
 
-// Mock Funding Rates
+// Safe/Stable coins - lower risk, consistent funding
+export const SAFE_SYMBOLS = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'XRP/USDT', 'BNB/USDT', 'ADA/USDT', 'AVAX/USDT', 'LINK/USDT', 'DOT/USDT', 'MATIC/USDT'];
+
+// Medium risk - altcoins with decent volume
+export const MEDIUM_SYMBOLS = ['ARB/USDT', 'OP/USDT', 'SUI/USDT', 'APT/USDT', 'INJ/USDT', 'SEI/USDT', 'TIA/USDT', 'JUP/USDT', 'STRK/USDT', 'WLD/USDT'];
+
+// High risk - meme coins, shitcoins, volatile
+export const HIGH_RISK_SYMBOLS = ['DOGE/USDT', 'SHIB/USDT', 'PEPE/USDT', 'FLOKI/USDT', 'BONK/USDT', 'WIF/USDT', 'MEME/USDT', 'TURBO/USDT', 'LADYS/USDT', 'AIDOGE/USDT', 'BOME/USDT', 'SLERF/USDT', 'MYRO/USDT', 'BRETT/USDT', 'MOG/USDT'];
+
+// All symbols combined
+export const SYMBOLS = [...SAFE_SYMBOLS, ...MEDIUM_SYMBOLS, ...HIGH_RISK_SYMBOLS];
+// Symbol risk mapping helper
+export const getSymbolRiskLevel = (symbol: string): RiskTier => {
+  if (HIGH_RISK_SYMBOLS.includes(symbol)) return 'high';
+  if (MEDIUM_SYMBOLS.includes(symbol)) return 'medium';
+  return 'safe';
+};
+
+// Mock Funding Rates - different ranges based on symbol risk
 export const generateFundingRates = (): FundingRate[] => {
   const rates: FundingRate[] = [];
   
   EXCHANGES.forEach(exchange => {
     SYMBOLS.forEach(symbol => {
-      const fundingRate = randomBetween(-0.05, 0.15);
+      const symbolRisk = getSymbolRiskLevel(symbol);
+      
+      // Higher risk coins have more extreme funding rates
+      let fundingRate: number;
+      if (symbolRisk === 'high') {
+        fundingRate = randomBetween(-0.15, 0.35); // Shitcoins: wild swings
+      } else if (symbolRisk === 'medium') {
+        fundingRate = randomBetween(-0.08, 0.20); // Altcoins: moderate
+      } else {
+        fundingRate = randomBetween(-0.03, 0.10); // Safe: stable
+      }
+      
       rates.push({
         exchange,
         symbol,
         fundingRate,
         nextFundingTime: new Date(Date.now() + randomBetween(1, 8) * 3600000).toISOString(),
-        riskTier: Math.abs(fundingRate) > 0.1 ? 'high' : Math.abs(fundingRate) > 0.05 ? 'medium' : 'safe',
+        riskTier: symbolRisk,
       });
     });
   });
@@ -45,20 +73,33 @@ export const generateFundingRates = (): FundingRate[] => {
   return rates.sort((a, b) => Math.abs(b.fundingRate) - Math.abs(a.fundingRate));
 };
 
-// Mock Funding Arbitrage
+// Mock Funding Arbitrage - higher spreads for riskier coins
 export const generateFundingArbitrage = (): FundingArbitrage[] => {
   const opportunities: FundingArbitrage[] = [];
   
-  for (let i = 0; i < 15; i++) {
+  // Generate more opportunities (25 total)
+  for (let i = 0; i < 25; i++) {
     const symbol = SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)];
+    const symbolRisk = getSymbolRiskLevel(symbol);
     const longExchange = EXCHANGES[Math.floor(Math.random() * EXCHANGES.length)];
     let shortExchange = EXCHANGES[Math.floor(Math.random() * EXCHANGES.length)];
     while (shortExchange === longExchange) {
       shortExchange = EXCHANGES[Math.floor(Math.random() * EXCHANGES.length)];
     }
     
-    const longFundingRate = randomBetween(-0.08, 0.02);
-    const shortFundingRate = randomBetween(0.02, 0.15);
+    // Riskier coins = bigger spreads = more profit potential
+    let longFundingRate: number, shortFundingRate: number;
+    if (symbolRisk === 'high') {
+      longFundingRate = randomBetween(-0.20, 0.05);
+      shortFundingRate = randomBetween(0.10, 0.40);
+    } else if (symbolRisk === 'medium') {
+      longFundingRate = randomBetween(-0.10, 0.02);
+      shortFundingRate = randomBetween(0.05, 0.20);
+    } else {
+      longFundingRate = randomBetween(-0.05, 0.01);
+      shortFundingRate = randomBetween(0.02, 0.10);
+    }
+    
     const spread = shortFundingRate - longFundingRate;
     
     opportunities.push({
@@ -69,29 +110,50 @@ export const generateFundingArbitrage = (): FundingArbitrage[] => {
       longFundingRate,
       shortFundingRate,
       spread,
-      score: Math.round(spread * 1000 + randomBetween(0, 20)),
-      riskTier: randomRiskTier(),
+      score: Math.round(spread * 1000 + randomBetween(0, 30)),
+      riskTier: symbolRisk,
     });
   }
   
   return opportunities.sort((a, b) => b.score - a.score);
 };
 
-// Mock Price Arbitrage
+// Mock Price Arbitrage - higher spreads for volatile/shitcoins
 export const generatePriceArbitrage = (): PriceArbitrage[] => {
   const opportunities: PriceArbitrage[] = [];
   
-  for (let i = 0; i < 12; i++) {
+  // More opportunities (20 total)
+  for (let i = 0; i < 20; i++) {
     const symbol = SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)];
+    const symbolRisk = getSymbolRiskLevel(symbol);
     const buyExchange = EXCHANGES[Math.floor(Math.random() * EXCHANGES.length)];
     let sellExchange = EXCHANGES[Math.floor(Math.random() * EXCHANGES.length)];
     while (sellExchange === buyExchange) {
       sellExchange = EXCHANGES[Math.floor(Math.random() * EXCHANGES.length)];
     }
     
-    const basePrice = symbol.includes('BTC') ? 65000 : symbol.includes('ETH') ? 3500 : randomBetween(1, 200);
-    const buyPrice = basePrice * (1 - randomBetween(0.001, 0.01));
-    const sellPrice = basePrice * (1 + randomBetween(0.001, 0.01));
+    // Base prices based on coin type
+    let basePrice: number;
+    if (symbol.includes('BTC')) basePrice = 65000;
+    else if (symbol.includes('ETH')) basePrice = 3500;
+    else if (symbol.includes('SOL')) basePrice = 150;
+    else if (symbol.includes('BNB')) basePrice = 600;
+    else if (symbolRisk === 'high') basePrice = randomBetween(0.00001, 0.1); // Shitcoins: very low prices
+    else if (symbolRisk === 'medium') basePrice = randomBetween(1, 50);
+    else basePrice = randomBetween(5, 200);
+    
+    // Riskier coins = bigger price discrepancies
+    let spreadMultiplier: number;
+    if (symbolRisk === 'high') {
+      spreadMultiplier = randomBetween(0.005, 0.05); // 0.5% - 5% spreads on shitcoins!
+    } else if (symbolRisk === 'medium') {
+      spreadMultiplier = randomBetween(0.002, 0.02); // 0.2% - 2%
+    } else {
+      spreadMultiplier = randomBetween(0.001, 0.008); // 0.1% - 0.8%
+    }
+    
+    const buyPrice = basePrice * (1 - spreadMultiplier);
+    const sellPrice = basePrice * (1 + spreadMultiplier);
     const spreadPercent = ((sellPrice - buyPrice) / buyPrice) * 100;
     const fees = 0.1; // 0.1% per trade
     const netAfterFees = spreadPercent - (fees * 2);
@@ -105,7 +167,8 @@ export const generatePriceArbitrage = (): PriceArbitrage[] => {
       sellPrice,
       spreadPercent,
       netAfterFees,
-      score: Math.round(netAfterFees * 100 + randomBetween(0, 15)),
+      score: Math.round(netAfterFees * 100 + randomBetween(0, 20)),
+      riskTier: symbolRisk,
     });
   }
   

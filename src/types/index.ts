@@ -51,6 +51,7 @@ export interface PriceArbitrage {
   spreadPercent: number;
   netAfterFees: number;
   score: number;
+  riskTier: RiskTier;
 }
 
 // Opportunity Types
