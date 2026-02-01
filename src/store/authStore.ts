@@ -5,9 +5,6 @@ import type { Session } from '@supabase/supabase-js';
 // Timeout for auth initialization to prevent infinite loading
 const AUTH_INIT_TIMEOUT_MS = 8000;
 
-// Track if auth listener is already set up
-let authListenerInitialized = false;
-
 // App-specific user type with role/plan info
 interface AppUser {
   id: string;
@@ -22,9 +19,11 @@ interface AppUser {
 interface AuthStore {
   user: AppUser | null;
   session: Session | null;
-  isAuthenticated: boolean;
-  isLoading: boolean;
-  error: string | null;
+  isAuthenticated: boolean; // TRUE if session exists (regardless of userData)
+  isLoading: boolean; // Initial auth check in progress
+  isUserDataLoading: boolean; // User profile/role data loading
+  userDataError: string | null; // Error specific to userData fetch
+  error: string | null; // General auth error
   initialize: () => Promise<void>;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   register: (email: string, password: string, name: string) => Promise<{ success: boolean; error?: string }>;
@@ -33,8 +32,23 @@ interface AuthStore {
   updatePlan: (plan: AppUser['plan']) => void;
 }
 
-// Helper to fetch user profile and roles from database
-async function fetchUserData(userId: string): Promise<AppUser | null> {
+// Helper to bootstrap user data if missing
+async function bootstrapUser(): Promise<boolean> {
+  try {
+    const { error } = await supabase.rpc('bootstrap_user');
+    if (error) {
+      console.error('Bootstrap user failed:', error);
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.error('Bootstrap user exception:', error);
+    return false;
+  }
+}
+
+// Helper to fetch user profile and roles from database with retry logic
+async function fetchUserData(userId: string, retryOnMissing = true): Promise<AppUser | null> {
   try {
     // Fetch profile
     const { data: profile, error: profileError } = await supabase
@@ -42,6 +56,19 @@ async function fetchUserData(userId: string): Promise<AppUser | null> {
       .select('*')
       .eq('user_id', userId)
       .single();
+
+    // If profile missing and retry is enabled, try bootstrap
+    if ((profileError || !profile) && retryOnMissing) {
+      console.log('Profile missing, attempting bootstrap...');
+      const bootstrapped = await bootstrapUser();
+      if (bootstrapped) {
+        // Wait a bit for data to propagate
+        await new Promise(resolve => setTimeout(resolve, 200));
+        // Retry without further bootstrap attempts
+        return fetchUserData(userId, false);
+      }
+      return null;
+    }
 
     if (profileError || !profile) {
       console.error('Error fetching profile:', profileError);
@@ -71,19 +98,31 @@ async function fetchUserData(userId: string): Promise<AppUser | null> {
   }
 }
 
+// Store subscription reference for cleanup
+let authSubscription: { unsubscribe: () => void } | null = null;
+let isInitialized = false;
+
 export const useAuthStore = create<AuthStore>()((set, get) => ({
   user: null,
   session: null,
   isAuthenticated: false,
   isLoading: true,
+  isUserDataLoading: false,
+  userDataError: null,
   error: null,
 
   initialize: async () => {
     // Prevent duplicate initialization
-    if (authListenerInitialized) {
+    if (isInitialized) {
       return;
     }
-    authListenerInitialized = true;
+    isInitialized = true;
+
+    // Clean up existing subscription if any
+    if (authSubscription) {
+      authSubscription.unsubscribe();
+      authSubscription = null;
+    }
 
     // Set up timeout to prevent infinite loading
     const timeoutId = setTimeout(() => {
@@ -102,27 +141,40 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
         }
         
         if (session?.user) {
-          // Use setTimeout to avoid Supabase deadlock
+          // Session exists - user is authenticated
+          set({
+            session,
+            isAuthenticated: true,
+            isUserDataLoading: true,
+            userDataError: null,
+            error: null,
+          });
+          
+          // Fetch user data in background (don't block auth state)
           setTimeout(async () => {
             const userData = await fetchUserData(session.user.id);
             set({
-              session,
               user: userData,
-              isAuthenticated: !!userData,
+              isUserDataLoading: false,
+              userDataError: userData ? null : 'Failed to load profile data',
               isLoading: false,
-              error: null,
             });
           }, 0);
         } else {
+          // No session - user is logged out
           set({
             session: null,
             user: null,
             isAuthenticated: false,
             isLoading: false,
+            isUserDataLoading: false,
+            userDataError: null,
             error: null,
           });
         }
       });
+
+      authSubscription = subscription;
 
       // Then get current session
       const { data: { session }, error } = await supabase.auth.getSession();
@@ -135,13 +187,22 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
       }
       
       if (session?.user) {
-        const userData = await fetchUserData(session.user.id);
+        // Session exists - mark as authenticated immediately
         set({
           session,
-          user: userData,
-          isAuthenticated: !!userData,
-          isLoading: false,
+          isAuthenticated: true,
+          isUserDataLoading: true,
+          userDataError: null,
+          isLoading: false, // Auth check done
           error: null,
+        });
+        
+        // Fetch user data
+        const userData = await fetchUserData(session.user.id);
+        set({
+          user: userData,
+          isUserDataLoading: false,
+          userDataError: userData ? null : 'Failed to load profile data',
         });
       } else {
         set({ isLoading: false, error: null });
@@ -154,7 +215,7 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
   },
 
   login: async (email: string, password: string) => {
-    set({ isLoading: true, error: null });
+    set({ isLoading: true, error: null, userDataError: null });
     
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
@@ -168,21 +229,24 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
       }
 
       if (data.user && data.session) {
-        // Fetch user data immediately after login
-        const userData = await fetchUserData(data.user.id);
-        
-        if (!userData) {
-          set({ isLoading: false, error: 'Failed to load user profile' });
-          return { success: false, error: 'Failed to load user profile. Please try again.' };
-        }
-        
+        // Session exists - mark as authenticated immediately
         set({
           session: data.session,
-          user: userData,
           isAuthenticated: true,
           isLoading: false,
+          isUserDataLoading: true,
           error: null,
         });
+        
+        // Fetch user data (non-blocking for auth status)
+        const userData = await fetchUserData(data.user.id);
+        
+        set({
+          user: userData,
+          isUserDataLoading: false,
+          userDataError: userData ? null : 'Profile data unavailable',
+        });
+        
         return { success: true };
       }
 
@@ -196,7 +260,7 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
   },
 
   register: async (email: string, password: string, name: string) => {
-    set({ isLoading: true, error: null });
+    set({ isLoading: true, error: null, userDataError: null });
     
     try {
       const { data, error } = await supabase.auth.signUp({
@@ -225,8 +289,16 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
       }
 
       if (data.user && data.session) {
-        // Wait a moment for the trigger to create the profile
-        await new Promise(resolve => setTimeout(resolve, 500));
+        // Authenticated - trigger bootstrap to ensure data exists
+        set({
+          session: data.session,
+          isAuthenticated: true,
+          isLoading: false,
+          isUserDataLoading: true,
+        });
+        
+        // Bootstrap and fetch user data
+        await bootstrapUser();
         
         // Update profile with display name
         await supabase
@@ -236,11 +308,11 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
 
         const userData = await fetchUserData(data.user.id);
         set({
-          session: data.session,
           user: userData,
-          isAuthenticated: !!userData,
-          isLoading: false,
+          isUserDataLoading: false,
+          userDataError: userData ? null : 'Profile setup in progress',
         });
+        
         return { success: true };
       }
 
@@ -260,6 +332,8 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
       session: null,
       isAuthenticated: false,
       isLoading: false,
+      isUserDataLoading: false,
+      userDataError: null,
       error: null,
     });
   },
@@ -267,8 +341,13 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
   refreshUserData: async () => {
     const { session } = get();
     if (session?.user) {
+      set({ isUserDataLoading: true, userDataError: null });
       const userData = await fetchUserData(session.user.id);
-      set({ user: userData });
+      set({ 
+        user: userData, 
+        isUserDataLoading: false,
+        userDataError: userData ? null : 'Failed to refresh profile data',
+      });
     }
   },
 
