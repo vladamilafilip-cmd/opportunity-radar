@@ -5,7 +5,6 @@ import { Badge } from "@/components/ui/badge";
 import { DisclaimerBanner } from "@/components/DisclaimerBanner";
 import { PLAN_DETAILS } from "@/lib/mockData";
 import { 
-  Radar, 
   TrendingUp, 
   ArrowLeftRight, 
   LineChart, 
@@ -22,9 +21,11 @@ export default function LandingPage() {
       <header className="border-b border-border/50 sticky top-0 bg-background/95 backdrop-blur z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="h-10 w-10 rounded-xl bg-primary/20 flex items-center justify-center">
-              <Radar className="h-6 w-6 text-primary" />
-            </div>
+            <img 
+              src="/favicon.jpg" 
+              alt="IQ200 RADAR" 
+              className="h-10 w-10 rounded-xl object-cover"
+            />
             <span className="text-xl font-bold">IQ200 RADAR</span>
           </div>
           <div className="flex items-center gap-3">
@@ -167,7 +168,11 @@ export default function LandingPage() {
         <div className="container mx-auto px-4 py-8">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-2">
-              <Radar className="h-5 w-5 text-primary" />
+              <img 
+                src="/favicon.jpg" 
+                alt="IQ200 RADAR" 
+                className="h-6 w-6 rounded object-cover"
+              />
               <span className="font-semibold">IQ200 RADAR</span>
             </div>
             <p className="text-sm text-muted-foreground text-center">
