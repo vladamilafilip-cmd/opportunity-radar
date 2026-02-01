@@ -654,13 +654,13 @@ export default function Dashboard() {
                                 <Badge variant="outline">{opp.type || 'N/A'}</Badge>
                               </TableCell>
                               <TableCell className="text-right font-mono text-green-600">
-                                {Number.isFinite(opp.estimatedProfit) ? `+${(opp.estimatedProfit * 100).toFixed(4)}%` : '0.0000%'}
+                                {Number.isFinite(opp.potentialReturn) ? `+${opp.potentialReturn.toFixed(4)}%` : '0.0000%'}
                               </TableCell>
                               <TableCell className="text-right font-mono text-muted-foreground">
                                 8
                               </TableCell>
                               <TableCell className="text-right font-mono font-semibold text-green-600">
-                                {formatProfitAbsolute(opp.estimatedProfit || 0)}
+                                {formatProfitAbsolute((opp.potentialReturn || 0) / 100)}
                               </TableCell>
                               <TableCell className="text-right font-bold">{Number.isFinite(opp.score) ? opp.score : 0}</TableCell>
                               <TableCell>
