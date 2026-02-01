@@ -168,6 +168,156 @@ export type Database = {
         }
         Relationships: []
       }
+      arbitrage_opportunities: {
+        Row: {
+          confidence_score: number
+          created_at: string
+          expires_at: string | null
+          funding_spread_8h: number
+          gross_edge_8h_bps: number
+          id: string
+          liquidity_score: number
+          long_exchange_id: string
+          long_fee_bps: number
+          long_funding_8h: number
+          long_market_id: string
+          long_price: number
+          net_edge_8h_bps: number
+          net_edge_annual_percent: number
+          opportunity_score: number
+          price_spread_bps: number
+          profit_score: number
+          reason: Json | null
+          risk_penalty: number
+          risk_tier: string
+          short_exchange_id: string
+          short_fee_bps: number
+          short_funding_8h: number
+          short_market_id: string
+          short_price: number
+          slippage_bps: number
+          spread_cost_bps: number
+          stability_score: number
+          status: string
+          symbol_id: string
+          total_cost_bps: number
+          total_fees_bps: number
+          ts: string
+          ts_bucket: string
+          updated_at: string
+        }
+        Insert: {
+          confidence_score?: number
+          created_at?: string
+          expires_at?: string | null
+          funding_spread_8h?: number
+          gross_edge_8h_bps?: number
+          id?: string
+          liquidity_score?: number
+          long_exchange_id: string
+          long_fee_bps?: number
+          long_funding_8h?: number
+          long_market_id: string
+          long_price?: number
+          net_edge_8h_bps?: number
+          net_edge_annual_percent?: number
+          opportunity_score?: number
+          price_spread_bps?: number
+          profit_score?: number
+          reason?: Json | null
+          risk_penalty?: number
+          risk_tier?: string
+          short_exchange_id: string
+          short_fee_bps?: number
+          short_funding_8h?: number
+          short_market_id: string
+          short_price?: number
+          slippage_bps?: number
+          spread_cost_bps?: number
+          stability_score?: number
+          status?: string
+          symbol_id: string
+          total_cost_bps?: number
+          total_fees_bps?: number
+          ts?: string
+          ts_bucket?: string
+          updated_at?: string
+        }
+        Update: {
+          confidence_score?: number
+          created_at?: string
+          expires_at?: string | null
+          funding_spread_8h?: number
+          gross_edge_8h_bps?: number
+          id?: string
+          liquidity_score?: number
+          long_exchange_id?: string
+          long_fee_bps?: number
+          long_funding_8h?: number
+          long_market_id?: string
+          long_price?: number
+          net_edge_8h_bps?: number
+          net_edge_annual_percent?: number
+          opportunity_score?: number
+          price_spread_bps?: number
+          profit_score?: number
+          reason?: Json | null
+          risk_penalty?: number
+          risk_tier?: string
+          short_exchange_id?: string
+          short_fee_bps?: number
+          short_funding_8h?: number
+          short_market_id?: string
+          short_price?: number
+          slippage_bps?: number
+          spread_cost_bps?: number
+          stability_score?: number
+          status?: string
+          symbol_id?: string
+          total_cost_bps?: number
+          total_fees_bps?: number
+          ts?: string
+          ts_bucket?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "arbitrage_opportunities_long_exchange_id_fkey"
+            columns: ["long_exchange_id"]
+            isOneToOne: false
+            referencedRelation: "exchanges"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "arbitrage_opportunities_long_market_id_fkey"
+            columns: ["long_market_id"]
+            isOneToOne: false
+            referencedRelation: "markets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "arbitrage_opportunities_short_exchange_id_fkey"
+            columns: ["short_exchange_id"]
+            isOneToOne: false
+            referencedRelation: "exchanges"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "arbitrage_opportunities_short_market_id_fkey"
+            columns: ["short_market_id"]
+            isOneToOne: false
+            referencedRelation: "markets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "arbitrage_opportunities_symbol_id_fkey"
+            columns: ["symbol_id"]
+            isOneToOne: false
+            referencedRelation: "symbols"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       backtest_runs: {
         Row: {
           completed_at: string | null
@@ -266,6 +416,100 @@ export type Database = {
           },
         ]
       }
+      computed_metrics_v2: {
+        Row: {
+          created_at: string
+          data_quality: number | null
+          exchange_id: string
+          funding_interval_hours: number
+          funding_rate_8h: number
+          funding_rate_annual: number
+          funding_rate_raw: number
+          id: string
+          liquidity_score: number
+          mark_price: number
+          market_id: string
+          open_interest: number | null
+          slippage_bps: number
+          spread_bps: number
+          symbol_id: string
+          taker_fee_bps: number
+          total_cost_bps: number
+          ts: string
+          ts_bucket: string
+          volatility_score: number
+          volume_24h: number | null
+        }
+        Insert: {
+          created_at?: string
+          data_quality?: number | null
+          exchange_id: string
+          funding_interval_hours?: number
+          funding_rate_8h?: number
+          funding_rate_annual?: number
+          funding_rate_raw?: number
+          id?: string
+          liquidity_score?: number
+          mark_price?: number
+          market_id: string
+          open_interest?: number | null
+          slippage_bps?: number
+          spread_bps?: number
+          symbol_id: string
+          taker_fee_bps?: number
+          total_cost_bps?: number
+          ts?: string
+          ts_bucket?: string
+          volatility_score?: number
+          volume_24h?: number | null
+        }
+        Update: {
+          created_at?: string
+          data_quality?: number | null
+          exchange_id?: string
+          funding_interval_hours?: number
+          funding_rate_8h?: number
+          funding_rate_annual?: number
+          funding_rate_raw?: number
+          id?: string
+          liquidity_score?: number
+          mark_price?: number
+          market_id?: string
+          open_interest?: number | null
+          slippage_bps?: number
+          spread_bps?: number
+          symbol_id?: string
+          taker_fee_bps?: number
+          total_cost_bps?: number
+          ts?: string
+          ts_bucket?: string
+          volatility_score?: number
+          volume_24h?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "computed_metrics_v2_exchange_id_fkey"
+            columns: ["exchange_id"]
+            isOneToOne: false
+            referencedRelation: "exchanges"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "computed_metrics_v2_market_id_fkey"
+            columns: ["market_id"]
+            isOneToOne: false
+            referencedRelation: "markets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "computed_metrics_v2_symbol_id_fkey"
+            columns: ["symbol_id"]
+            isOneToOne: false
+            referencedRelation: "symbols"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       dead_letter: {
         Row: {
           created_at: string
@@ -305,6 +549,78 @@ export type Database = {
           resolved?: boolean
           retry_count?: number
           source?: string
+        }
+        Relationships: []
+      }
+      engine_config: {
+        Row: {
+          config_key: string
+          config_value: Json
+          description: string | null
+          id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          config_key: string
+          config_value: Json
+          description?: string | null
+          id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          config_key?: string
+          config_value?: Json
+          description?: string | null
+          id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
+      engine_runs: {
+        Row: {
+          completed_at: string | null
+          config_snapshot: Json | null
+          duration_ms: number | null
+          error_message: string | null
+          error_stack: string | null
+          id: string
+          markets_processed: number | null
+          metrics_computed: number | null
+          opportunities_found: number | null
+          signals_generated: number | null
+          started_at: string
+          status: string
+        }
+        Insert: {
+          completed_at?: string | null
+          config_snapshot?: Json | null
+          duration_ms?: number | null
+          error_message?: string | null
+          error_stack?: string | null
+          id?: string
+          markets_processed?: number | null
+          metrics_computed?: number | null
+          opportunities_found?: number | null
+          signals_generated?: number | null
+          started_at?: string
+          status?: string
+        }
+        Update: {
+          completed_at?: string | null
+          config_snapshot?: Json | null
+          duration_ms?: number | null
+          error_message?: string | null
+          error_stack?: string | null
+          id?: string
+          markets_processed?: number | null
+          metrics_computed?: number | null
+          opportunities_found?: number | null
+          signals_generated?: number | null
+          started_at?: string
+          status?: string
         }
         Relationships: []
       }
@@ -1378,6 +1694,96 @@ export type Database = {
         }
         Relationships: []
       }
+      trading_signals: {
+        Row: {
+          closed_at: string | null
+          closed_reason: string | null
+          confidence: number
+          created_at: string
+          direction: string
+          expires_at: string
+          id: string
+          is_speculative: boolean
+          long_exchange: string
+          net_profit_estimate_bps: number
+          net_profit_estimate_percent: number
+          next_funding_time: string | null
+          opportunity_id: string | null
+          reason: Json | null
+          score: number
+          short_exchange: string
+          signal_type: string
+          status: Database["public"]["Enums"]["signal_status"]
+          symbol_id: string
+          ts: string
+          ttl_seconds: number
+          updated_at: string
+        }
+        Insert: {
+          closed_at?: string | null
+          closed_reason?: string | null
+          confidence?: number
+          created_at?: string
+          direction: string
+          expires_at: string
+          id?: string
+          is_speculative?: boolean
+          long_exchange: string
+          net_profit_estimate_bps?: number
+          net_profit_estimate_percent?: number
+          next_funding_time?: string | null
+          opportunity_id?: string | null
+          reason?: Json | null
+          score?: number
+          short_exchange: string
+          signal_type: string
+          status?: Database["public"]["Enums"]["signal_status"]
+          symbol_id: string
+          ts?: string
+          ttl_seconds?: number
+          updated_at?: string
+        }
+        Update: {
+          closed_at?: string | null
+          closed_reason?: string | null
+          confidence?: number
+          created_at?: string
+          direction?: string
+          expires_at?: string
+          id?: string
+          is_speculative?: boolean
+          long_exchange?: string
+          net_profit_estimate_bps?: number
+          net_profit_estimate_percent?: number
+          next_funding_time?: string | null
+          opportunity_id?: string | null
+          reason?: Json | null
+          score?: number
+          short_exchange?: string
+          signal_type?: string
+          status?: Database["public"]["Enums"]["signal_status"]
+          symbol_id?: string
+          ts?: string
+          ttl_seconds?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trading_signals_opportunity_id_fkey"
+            columns: ["opportunity_id"]
+            isOneToOne: false
+            referencedRelation: "arbitrage_opportunities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trading_signals_symbol_id_fkey"
+            columns: ["symbol_id"]
+            isOneToOne: false
+            referencedRelation: "symbols"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       usage_counters: {
         Row: {
           alerts_sent: number
@@ -1485,6 +1891,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      annualize_8h_rate: { Args: { rate_8h: number }; Returns: number }
+      calc_liquidity_score: { Args: { spread_bps: number }; Returns: number }
+      calc_profit_score: { Args: { net_edge_bps: number }; Returns: number }
+      cleanup_engine_data: { Args: never; Returns: undefined }
       get_user_plan: {
         Args: { _user_id: string }
         Returns: Database["public"]["Enums"]["plan_tier"]
@@ -1495,6 +1905,10 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      normalize_funding_8h: {
+        Args: { funding_rate: number; interval_hours: number }
+        Returns: number
       }
     }
     Enums: {
@@ -1512,6 +1926,7 @@ export type Database = {
       order_type: "market" | "limit" | "stop_market" | "stop_limit"
       plan_tier: "free" | "pro" | "elite" | "team"
       position_side: "long" | "short"
+      signal_status: "open" | "closed" | "expired"
       signal_type:
         | "funding_extreme"
         | "funding_divergence"
@@ -1523,6 +1938,9 @@ export type Database = {
         | "breakout_momentum"
         | "funding_flip"
         | "liquidation_cascade"
+        | "funding_arbitrage"
+        | "spread_arbitrage"
+        | "basis_arbitrage"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1665,6 +2083,7 @@ export const Constants = {
       order_type: ["market", "limit", "stop_market", "stop_limit"],
       plan_tier: ["free", "pro", "elite", "team"],
       position_side: ["long", "short"],
+      signal_status: ["open", "closed", "expired"],
       signal_type: [
         "funding_extreme",
         "funding_divergence",
@@ -1676,6 +2095,9 @@ export const Constants = {
         "breakout_momentum",
         "funding_flip",
         "liquidation_cascade",
+        "funding_arbitrage",
+        "spread_arbitrage",
+        "basis_arbitrage",
       ],
     },
   },
