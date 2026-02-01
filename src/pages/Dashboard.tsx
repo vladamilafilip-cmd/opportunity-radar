@@ -587,13 +587,13 @@ export default function Dashboard() {
                               <TableCell className="text-green-600">{arb.buyExchange || 'N/A'}</TableCell>
                               <TableCell className="text-red-600">{arb.sellExchange || 'N/A'}</TableCell>
                               <TableCell className="text-right font-mono text-green-600">
-                                {Number.isFinite(arb.spread) ? `+${(arb.spread * 100).toFixed(4)}%` : '0.0000%'}
+                                {Number.isFinite(arb.spreadPercent) ? `+${arb.spreadPercent.toFixed(4)}%` : '0.0000%'}
                               </TableCell>
                               <TableCell className="text-right font-mono text-muted-foreground">
                                 8
                               </TableCell>
                               <TableCell className="text-right font-mono font-semibold text-green-600">
-                                {formatProfitAbsolute(arb.spread || 0)}
+                                {formatProfitAbsolute((arb.netAfterFees || arb.spreadPercent || 0) / 100)}
                               </TableCell>
                               <TableCell className="text-right font-bold">{Number.isFinite(arb.score) ? arb.score : 0}</TableCell>
                               <TableCell>
