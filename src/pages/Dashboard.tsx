@@ -66,41 +66,43 @@ export default function Dashboard() {
     setIsLoadingRealData(true);
 
     try {
-      // Parallel fetch using direct SDK calls
-      const [metricsResult, signalsResult, fundingResult] = await Promise.all([
+      // Parallel fetch using direct SDK calls with joins for proper display
+      const [metricsResult, signalsResult] = await Promise.all([
         supabase
           .from("computed_metrics_v2")
-          .select("*")
+          .select(`
+            *,
+            symbols:symbol_id (display_name),
+            exchanges:exchange_id (code, name)
+          `)
           .order("ts", { ascending: false })
           .limit(50),
         supabase
           .from("trading_signals")
-          .select("*")
+          .select(`
+            *,
+            symbols:symbol_id (display_name)
+          `)
           .order("created_at", { ascending: false })
           .limit(20),
-        supabase
-          .from("funding_rates")
-          .select("*")
-          .order("ts", { ascending: false })
-          .limit(50),
       ]);
 
       const hasRealMetrics = metricsResult.data && metricsResult.data.length > 0;
       const hasRealSignals = signalsResult.data && signalsResult.data.length > 0;
-      const hasRealFunding = fundingResult.data && fundingResult.data.length > 0;
 
       if (hasRealMetrics) setRealMetrics(metricsResult.data);
       if (hasRealSignals) setRealSignals(signalsResult.data);
-      if (hasRealFunding) setRealFundingRates(fundingResult.data);
+      
+      // Use metrics for funding rates display (has all needed info)
+      if (hasRealMetrics) setRealFundingRates(metricsResult.data);
 
       // Log any errors for debugging
       if (metricsResult.error) console.error("Metrics error:", metricsResult.error.message);
       if (signalsResult.error) console.error("Signals error:", signalsResult.error.message);
-      if (fundingResult.error) console.error("Funding error:", fundingResult.error.message);
 
       // Determine data source
-      if (hasRealMetrics || hasRealSignals || hasRealFunding) {
-        setDataSource(hasRealMetrics && hasRealSignals && hasRealFunding ? "live" : "mixed");
+      if (hasRealMetrics || hasRealSignals) {
+        setDataSource(hasRealMetrics && hasRealSignals ? "live" : "mixed");
       } else {
         setDataSource("mock");
       }
@@ -137,26 +139,29 @@ export default function Dashboard() {
 
   // Get display data (real or mock fallback)
   const displayFundingRates = realFundingRates.length > 0 
-    ? realFundingRates.map(fr => ({
-        exchange: fr.market_id?.split('-')[0] || 'Unknown',
-        symbol: fr.market_id?.split('-')[1] || 'Unknown',
-        fundingRate: fr.funding_rate || 0,
-        nextFundingTime: fr.next_funding_ts || new Date().toISOString(),
-        riskTier: Math.abs(fr.funding_rate || 0) > 0.001 ? 'high' : Math.abs(fr.funding_rate || 0) > 0.0005 ? 'medium' : 'low',
+    ? realFundingRates.map((fr: any) => ({
+        exchange: fr.exchanges?.name || fr.exchanges?.code || 'Unknown',
+        symbol: fr.symbols?.display_name || 'Unknown',
+        fundingRate: (fr.funding_rate_8h || 0) * 100, // Convert to percentage
+        nextFundingTime: new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(), // 8h from now
+        riskTier: Math.abs(fr.funding_rate_8h || 0) > 0.001 ? 'high' : Math.abs(fr.funding_rate_8h || 0) > 0.0003 ? 'medium' : 'safe' as const,
+        markPrice: fr.mark_price || 0,
+        volume24h: fr.volume_24h || 0,
+        liquidityScore: fr.liquidity_score || 0,
       }))
     : mockFundingRates;
 
   const displaySignals = realSignals.length > 0
-    ? realSignals.map(sig => ({
+    ? realSignals.map((sig: any) => ({
         id: sig.id,
-        symbol: sig.symbol_id || 'Unknown',
+        symbol: sig.symbols?.display_name || 'Unknown',
         type: sig.signal_type || 'funding_arbitrage',
         longExchange: sig.long_exchange || 'Unknown',
         shortExchange: sig.short_exchange || 'Unknown',
         score: sig.score || 0,
         confidence: sig.confidence || 0,
         netProfit: sig.net_profit_estimate_percent || 0,
-        riskTier: sig.score > 80 ? 'low' : sig.score > 60 ? 'medium' : 'high',
+        riskTier: sig.score > 80 ? 'safe' : sig.score > 60 ? 'medium' : 'high' as const,
       }))
     : mockFundingArbs;
 
