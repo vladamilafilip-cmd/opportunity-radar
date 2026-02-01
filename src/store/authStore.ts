@@ -1,6 +1,9 @@
 import { create } from 'zustand';
 import { supabase } from '@/integrations/supabase/client';
-import type { User as SupabaseUser, Session } from '@supabase/supabase-js';
+import type { Session } from '@supabase/supabase-js';
+
+// Timeout for auth initialization to prevent infinite loading
+const AUTH_INIT_TIMEOUT_MS = 5000;
 
 // App-specific user type with role/plan info
 interface AppUser {
@@ -18,6 +21,7 @@ interface AuthStore {
   session: Session | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  error: string | null;
   initialize: () => Promise<void>;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   register: (email: string, password: string, name: string) => Promise<{ success: boolean; error?: string }>;
@@ -69,11 +73,19 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
   session: null,
   isAuthenticated: false,
   isLoading: true,
+  error: null,
 
   initialize: async () => {
+    // Set up timeout to prevent infinite loading
+    const timeoutId = setTimeout(() => {
+      console.warn('Auth initialization timed out after', AUTH_INIT_TIMEOUT_MS, 'ms');
+      set({ isLoading: false, error: 'Auth initialization timed out. Please refresh.' });
+    }, AUTH_INIT_TIMEOUT_MS);
+
     try {
       // Set up auth state listener FIRST
       supabase.auth.onAuthStateChange(async (event, session) => {
+        clearTimeout(timeoutId);
         if (session?.user) {
           const userData = await fetchUserData(session.user.id);
           set({
@@ -81,6 +93,7 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
             user: userData,
             isAuthenticated: !!userData,
             isLoading: false,
+            error: null,
           });
         } else {
           set({
@@ -88,12 +101,20 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
             user: null,
             isAuthenticated: false,
             isLoading: false,
+            error: null,
           });
         }
       });
 
       // Then get current session
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session }, error } = await supabase.auth.getSession();
+      clearTimeout(timeoutId);
+
+      if (error) {
+        console.error('Error getting session:', error);
+        set({ isLoading: false, error: error.message });
+        return;
+      }
       
       if (session?.user) {
         const userData = await fetchUserData(session.user.id);
@@ -102,13 +123,15 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
           user: userData,
           isAuthenticated: !!userData,
           isLoading: false,
+          error: null,
         });
       } else {
-        set({ isLoading: false });
+        set({ isLoading: false, error: null });
       }
     } catch (error) {
+      clearTimeout(timeoutId);
       console.error('Auth initialization error:', error);
-      set({ isLoading: false });
+      set({ isLoading: false, error: 'Failed to initialize authentication' });
     }
   },
 
