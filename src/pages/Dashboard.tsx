@@ -1,10 +1,14 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/store/authStore";
+import { supabase } from "@/integrations/supabase/client";
+import { supabaseReady, safeQuery } from "@/lib/supabaseHelpers";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { RiskBadge } from "@/components/RiskBadge";
 import { DisclaimerBanner } from "@/components/DisclaimerBanner";
 import { LastUpdated } from "@/components/LastUpdated";
@@ -24,7 +28,9 @@ import {
   LogOut,
   CreditCard,
   ShieldCheck,
-  Star
+  Star,
+  Database,
+  AlertCircle
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -34,28 +40,93 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
+type DataSource = "live" | "mock" | "mixed";
+
 export default function Dashboard() {
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
   const [lastUpdate, setLastUpdate] = useState(new Date());
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [dataSource, setDataSource] = useState<DataSource>("mock");
+  const [isLoadingRealData, setIsLoadingRealData] = useState(true);
   
-  // Mock data state
-  const [fundingRates, setFundingRates] = useState(generateFundingRates());
-  const [fundingArbs, setFundingArbs] = useState(generateFundingArbitrage());
-  const [priceArbs, setPriceArbs] = useState(generatePriceArbitrage());
-  const [opportunities, setOpportunities] = useState(generateOpportunities());
+  // Real data from Supabase
+  const [realMetrics, setRealMetrics] = useState<any[]>([]);
+  const [realSignals, setRealSignals] = useState<any[]>([]);
+  const [realFundingRates, setRealFundingRates] = useState<any[]>([]);
+  
+  // Mock data as fallback
+  const [mockFundingRates] = useState(generateFundingRates());
+  const [mockFundingArbs] = useState(generateFundingArbitrage());
+  const [mockPriceArbs] = useState(generatePriceArbitrage());
+  const [mockOpportunities] = useState(generateOpportunities());
 
-  const handleRefresh = () => {
+  // Fetch real data from Supabase
+  const fetchRealData = useCallback(async () => {
+    if (!supabaseReady) {
+      setDataSource("mock");
+      setIsLoadingRealData(false);
+      return;
+    }
+
+    setIsLoadingRealData(true);
+
+    const [metricsResult, signalsResult, fundingResult] = await Promise.all([
+      safeQuery(async () =>
+        await supabase
+          .from("computed_metrics_v2")
+          .select("*")
+          .order("ts", { ascending: false })
+          .limit(50)
+      ),
+      safeQuery(async () =>
+        await supabase
+          .from("trading_signals")
+          .select("*")
+          .order("created_at", { ascending: false })
+          .limit(20)
+      ),
+      safeQuery(async () =>
+        await supabase
+          .from("funding_rates")
+          .select("*")
+          .order("ts", { ascending: false })
+          .limit(50)
+      ),
+    ]);
+
+    const hasRealMetrics = metricsResult.data && (metricsResult.data as any[]).length > 0;
+    const hasRealSignals = signalsResult.data && (signalsResult.data as any[]).length > 0;
+    const hasRealFunding = fundingResult.data && (fundingResult.data as any[]).length > 0;
+
+    if (hasRealMetrics) setRealMetrics(metricsResult.data as any[]);
+    if (hasRealSignals) setRealSignals(signalsResult.data as any[]);
+    if (hasRealFunding) setRealFundingRates(fundingResult.data as any[]);
+
+    // Determine data source
+    if (hasRealMetrics || hasRealSignals || hasRealFunding) {
+      setDataSource(hasRealMetrics && hasRealSignals && hasRealFunding ? "live" : "mixed");
+    } else {
+      setDataSource("mock");
+    }
+
+    setLastUpdate(new Date());
+    setIsLoadingRealData(false);
+  }, []);
+
+  // Initial fetch and auto-refresh
+  useEffect(() => {
+    fetchRealData();
+
+    // Auto-refresh every 30 seconds
+    const interval = setInterval(fetchRealData, 30000);
+    return () => clearInterval(interval);
+  }, [fetchRealData]);
+
+  const handleRefresh = async () => {
     setIsRefreshing(true);
-    setTimeout(() => {
-      setFundingRates(generateFundingRates());
-      setFundingArbs(generateFundingArbitrage());
-      setPriceArbs(generatePriceArbitrage());
-      setOpportunities(generateOpportunities());
-      setLastUpdate(new Date());
-      setIsRefreshing(false);
-    }, 1000);
+    await fetchRealData();
+    setIsRefreshing(false);
   };
 
   const handleLogout = () => {
@@ -63,16 +134,32 @@ export default function Dashboard() {
     navigate("/");
   };
 
-  // Auto refresh every 60 seconds for elite/team plans
-  useEffect(() => {
-    if (user?.plan === 'elite' || user?.plan === 'team') {
-      const interval = setInterval(handleRefresh, 60000);
-      return () => clearInterval(interval);
-    }
-  }, [user?.plan]);
-
   const isPro = user?.plan !== 'free';
-  const isPlan = (plans: string[]) => plans.includes(user?.plan || 'free');
+
+  // Get display data (real or mock fallback)
+  const displayFundingRates = realFundingRates.length > 0 
+    ? realFundingRates.map(fr => ({
+        exchange: fr.market_id?.split('-')[0] || 'Unknown',
+        symbol: fr.market_id?.split('-')[1] || 'Unknown',
+        fundingRate: fr.funding_rate || 0,
+        nextFundingTime: fr.next_funding_ts || new Date().toISOString(),
+        riskTier: Math.abs(fr.funding_rate || 0) > 0.001 ? 'high' : Math.abs(fr.funding_rate || 0) > 0.0005 ? 'medium' : 'low',
+      }))
+    : mockFundingRates;
+
+  const displaySignals = realSignals.length > 0
+    ? realSignals.map(sig => ({
+        id: sig.id,
+        symbol: sig.symbol_id || 'Unknown',
+        type: sig.signal_type || 'funding_arbitrage',
+        longExchange: sig.long_exchange || 'Unknown',
+        shortExchange: sig.short_exchange || 'Unknown',
+        score: sig.score || 0,
+        confidence: sig.confidence || 0,
+        netProfit: sig.net_profit_estimate_percent || 0,
+        riskTier: sig.score > 80 ? 'low' : sig.score > 60 ? 'medium' : 'high',
+      }))
+    : mockFundingArbs;
 
   return (
     <div className="min-h-screen bg-background">
@@ -87,9 +174,18 @@ export default function Dashboard() {
           </div>
           
           <div className="flex items-center gap-2">
+            {/* Data Source Indicator */}
+            <Badge 
+              variant={dataSource === "live" ? "default" : dataSource === "mixed" ? "secondary" : "outline"}
+              className="gap-1 hidden sm:flex"
+            >
+              <Database className="h-3 w-3" />
+              {dataSource === "live" ? "Live Data" : dataSource === "mixed" ? "Mixed Data" : "Mock Data"}
+            </Badge>
+
             <LastUpdated 
               timestamp={lastUpdate} 
-              isRefreshing={isRefreshing}
+              isRefreshing={isRefreshing || isLoadingRealData}
               onRefresh={handleRefresh}
             />
             
@@ -133,6 +229,12 @@ export default function Dashboard() {
                     Settings
                   </Link>
                 </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link to="/health" className="cursor-pointer">
+                    <AlertCircle className="h-4 w-4 mr-2" />
+                    Health Check
+                  </Link>
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleLogout} className="text-destructive cursor-pointer">
                   <LogOut className="h-4 w-4 mr-2" />
@@ -147,6 +249,20 @@ export default function Dashboard() {
       {/* Main Content */}
       <main className="container mx-auto px-4 py-6">
         <DisclaimerBanner />
+        
+        {/* No Real Data Warning */}
+        {dataSource === "mock" && !isLoadingRealData && (
+          <div className="mb-6 p-4 bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-800 rounded-lg flex items-start gap-3">
+            <AlertCircle className="h-5 w-5 text-yellow-600 dark:text-yellow-400 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-medium text-yellow-800 dark:text-yellow-200">Using Mock Data</p>
+              <p className="text-sm text-yellow-700 dark:text-yellow-300">
+                No live data found in database. Displaying mock data for demonstration.
+                Visit <Link to="/health" className="underline font-medium">Health Check</Link> to verify database connectivity.
+              </p>
+            </div>
+          </div>
+        )}
         
         <Tabs defaultValue="funding" className="mt-6">
           <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-grid">
@@ -175,39 +291,52 @@ export default function Dashboard() {
                 <CardTitle className="flex items-center gap-2">
                   <TrendingUp className="h-5 w-5 text-primary" />
                   Funding Rates
+                  {realFundingRates.length > 0 && (
+                    <Badge variant="outline" className="ml-2">
+                      {realFundingRates.length} live
+                    </Badge>
+                  )}
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Exchange</TableHead>
-                        <TableHead>Symbol</TableHead>
-                        <TableHead className="text-right">Funding Rate</TableHead>
-                        <TableHead>Next Funding</TableHead>
-                        <TableHead>Risk</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {fundingRates.slice(0, 20).map((rate, idx) => (
-                        <TableRow key={`${rate.exchange}-${rate.symbol}-${idx}`}>
-                          <TableCell className="font-medium">{rate.exchange}</TableCell>
-                          <TableCell>{rate.symbol}</TableCell>
-                          <TableCell className={`text-right font-mono ${rate.fundingRate >= 0 ? 'text-success' : 'text-danger'}`}>
-                            {rate.fundingRate >= 0 ? '+' : ''}{(rate.fundingRate * 100).toFixed(4)}%
-                          </TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {new Date(rate.nextFundingTime).toLocaleTimeString()}
-                          </TableCell>
-                          <TableCell>
-                            <RiskBadge tier={rate.riskTier} />
-                          </TableCell>
+                {isLoadingRealData ? (
+                  <div className="space-y-3">
+                    {[...Array(5)].map((_, i) => (
+                      <Skeleton key={i} className="h-12 w-full" />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Exchange</TableHead>
+                          <TableHead>Symbol</TableHead>
+                          <TableHead className="text-right">Funding Rate</TableHead>
+                          <TableHead>Next Funding</TableHead>
+                          <TableHead>Risk</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
+                      </TableHeader>
+                      <TableBody>
+                        {displayFundingRates.slice(0, 20).map((rate: any, idx: number) => (
+                          <TableRow key={`${rate.exchange}-${rate.symbol}-${idx}`}>
+                            <TableCell className="font-medium">{rate.exchange || 'N/A'}</TableCell>
+                            <TableCell>{rate.symbol || 'N/A'}</TableCell>
+                            <TableCell className={`text-right font-mono ${(rate.fundingRate || 0) >= 0 ? 'text-success' : 'text-danger'}`}>
+                              {(rate.fundingRate || 0) >= 0 ? '+' : ''}{((rate.fundingRate || 0) * 100).toFixed(4)}%
+                            </TableCell>
+                            <TableCell className="text-muted-foreground">
+                              {rate.nextFundingTime ? new Date(rate.nextFundingTime).toLocaleTimeString() : 'N/A'}
+                            </TableCell>
+                            <TableCell>
+                              <RiskBadge tier={rate.riskTier || 'medium'} />
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -222,47 +351,60 @@ export default function Dashboard() {
                   <CardTitle className="flex items-center gap-2">
                     <ArrowLeftRight className="h-5 w-5 text-primary" />
                     Funding Arbitrage Opportunities
+                    {realSignals.length > 0 && (
+                      <Badge variant="outline" className="ml-2">
+                        {realSignals.length} signals
+                      </Badge>
+                    )}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Symbol</TableHead>
-                          <TableHead>Long Exchange</TableHead>
-                          <TableHead>Short Exchange</TableHead>
-                          <TableHead className="text-right">Spread</TableHead>
-                          <TableHead className="text-right">Score</TableHead>
-                          <TableHead>Risk</TableHead>
-                          <TableHead></TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {fundingArbs.map((arb) => (
-                          <TableRow key={arb.id}>
-                            <TableCell className="font-medium">{arb.symbol}</TableCell>
-                            <TableCell className="text-success">{arb.longExchange}</TableCell>
-                            <TableCell className="text-danger">{arb.shortExchange}</TableCell>
-                            <TableCell className="text-right font-mono text-success">
-                              +{(arb.spread * 100).toFixed(4)}%
-                            </TableCell>
-                            <TableCell className="text-right font-bold">{arb.score}</TableCell>
-                            <TableCell>
-                              <RiskBadge tier={arb.riskTier} />
-                            </TableCell>
-                            <TableCell>
-                              <Link to={`/opportunity/${arb.id}`}>
-                                <Button size="sm" variant="outline">
-                                  Open
-                                </Button>
-                              </Link>
-                            </TableCell>
+                  {isLoadingRealData ? (
+                    <div className="space-y-3">
+                      {[...Array(5)].map((_, i) => (
+                        <Skeleton key={i} className="h-12 w-full" />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Symbol</TableHead>
+                            <TableHead>Long Exchange</TableHead>
+                            <TableHead>Short Exchange</TableHead>
+                            <TableHead className="text-right">Net Profit</TableHead>
+                            <TableHead className="text-right">Score</TableHead>
+                            <TableHead>Risk</TableHead>
+                            <TableHead></TableHead>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
+                        </TableHeader>
+                        <TableBody>
+                          {displaySignals.map((arb: any) => (
+                            <TableRow key={arb.id}>
+                              <TableCell className="font-medium">{arb.symbol || 'N/A'}</TableCell>
+                              <TableCell className="text-success">{arb.longExchange || 'N/A'}</TableCell>
+                              <TableCell className="text-danger">{arb.shortExchange || 'N/A'}</TableCell>
+                              <TableCell className="text-right font-mono text-success">
+                                +{((arb.netProfit || arb.spread || 0) * 100).toFixed(4)}%
+                              </TableCell>
+                              <TableCell className="text-right font-bold">{arb.score || 0}</TableCell>
+                              <TableCell>
+                                <RiskBadge tier={arb.riskTier || 'medium'} />
+                              </TableCell>
+                              <TableCell>
+                                <Link to={`/opportunity/${arb.id}`}>
+                                  <Button size="sm" variant="outline">
+                                    Open
+                                  </Button>
+                                </Link>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )}
@@ -281,44 +423,52 @@ export default function Dashboard() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Symbol</TableHead>
-                          <TableHead>Buy Exchange</TableHead>
-                          <TableHead>Sell Exchange</TableHead>
-                          <TableHead className="text-right">Spread %</TableHead>
-                          <TableHead className="text-right">Net (After Fees)</TableHead>
-                          <TableHead className="text-right">Score</TableHead>
-                          <TableHead></TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {priceArbs.map((arb) => (
-                          <TableRow key={arb.id}>
-                            <TableCell className="font-medium">{arb.symbol}</TableCell>
-                            <TableCell className="text-success">{arb.buyExchange}</TableCell>
-                            <TableCell className="text-danger">{arb.sellExchange}</TableCell>
-                            <TableCell className="text-right font-mono">
-                              {arb.spreadPercent.toFixed(3)}%
-                            </TableCell>
-                            <TableCell className={`text-right font-mono ${arb.netAfterFees >= 0 ? 'text-success' : 'text-danger'}`}>
-                              {arb.netAfterFees >= 0 ? '+' : ''}{arb.netAfterFees.toFixed(3)}%
-                            </TableCell>
-                            <TableCell className="text-right font-bold">{arb.score}</TableCell>
-                            <TableCell>
-                              <Link to={`/opportunity/${arb.id}`}>
-                                <Button size="sm" variant="outline">
-                                  Open
-                                </Button>
-                              </Link>
-                            </TableCell>
+                  {isLoadingRealData ? (
+                    <div className="space-y-3">
+                      {[...Array(5)].map((_, i) => (
+                        <Skeleton key={i} className="h-12 w-full" />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Symbol</TableHead>
+                            <TableHead>Buy Exchange</TableHead>
+                            <TableHead>Sell Exchange</TableHead>
+                            <TableHead className="text-right">Spread %</TableHead>
+                            <TableHead className="text-right">Net (After Fees)</TableHead>
+                            <TableHead className="text-right">Score</TableHead>
+                            <TableHead></TableHead>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
+                        </TableHeader>
+                        <TableBody>
+                          {mockPriceArbs.map((arb) => (
+                            <TableRow key={arb.id}>
+                              <TableCell className="font-medium">{arb.symbol}</TableCell>
+                              <TableCell className="text-success">{arb.buyExchange}</TableCell>
+                              <TableCell className="text-danger">{arb.sellExchange}</TableCell>
+                              <TableCell className="text-right font-mono">
+                                {arb.spreadPercent.toFixed(3)}%
+                              </TableCell>
+                              <TableCell className={`text-right font-mono ${arb.netAfterFees >= 0 ? 'text-success' : 'text-danger'}`}>
+                                {arb.netAfterFees >= 0 ? '+' : ''}{arb.netAfterFees.toFixed(3)}%
+                              </TableCell>
+                              <TableCell className="text-right font-bold">{arb.score}</TableCell>
+                              <TableCell>
+                                <Link to={`/opportunity/${arb.id}`}>
+                                  <Button size="sm" variant="outline">
+                                    Open
+                                  </Button>
+                                </Link>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )}
@@ -334,45 +484,55 @@ export default function Dashboard() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                  {opportunities.slice(0, isPro ? 12 : 3).map((opp) => (
-                    <Link key={opp.id} to={`/opportunity/${opp.id}`}>
-                      <Card className="trading-card h-full cursor-pointer">
-                        <CardContent className="p-4">
-                          <div className="flex items-start justify-between mb-2">
-                            <div>
-                              <p className="font-bold">{opp.symbol}</p>
-                              <p className="text-xs text-muted-foreground capitalize">{opp.type} Arb</p>
-                            </div>
-                            <RiskBadge tier={opp.riskTier} />
-                          </div>
-                          <div className="flex items-center justify-between mt-4">
-                            <div>
-                              <p className="text-xs text-muted-foreground">Potential</p>
-                              <p className="text-lg font-bold text-success">
-                                +{opp.potentialReturn.toFixed(2)}%
-                              </p>
-                            </div>
-                            <div className="text-right">
-                              <p className="text-xs text-muted-foreground">Score</p>
-                              <p className="text-2xl font-bold text-primary">{opp.score}</p>
-                            </div>
-                          </div>
-                          <p className="text-xs text-muted-foreground mt-3">
-                            {opp.exchanges.join(' ↔ ')}
-                          </p>
-                        </CardContent>
-                      </Card>
-                    </Link>
-                  ))}
-                </div>
-                {!isPro && (
-                  <div className="mt-6 text-center">
-                    <p className="text-muted-foreground mb-2">Upgrade to see all opportunities</p>
-                    <Link to="/billing">
-                      <Button>Upgrade to PRO</Button>
-                    </Link>
+                {isLoadingRealData ? (
+                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    {[...Array(6)].map((_, i) => (
+                      <Skeleton key={i} className="h-32 w-full" />
+                    ))}
                   </div>
+                ) : (
+                  <>
+                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                      {mockOpportunities.slice(0, isPro ? 12 : 3).map((opp) => (
+                        <Link key={opp.id} to={`/opportunity/${opp.id}`}>
+                          <Card className="trading-card h-full cursor-pointer">
+                            <CardContent className="p-4">
+                              <div className="flex items-start justify-between mb-2">
+                                <div>
+                                  <p className="font-bold">{opp.symbol}</p>
+                                  <p className="text-xs text-muted-foreground capitalize">{opp.type} Arb</p>
+                                </div>
+                                <RiskBadge tier={opp.riskTier} />
+                              </div>
+                              <div className="flex items-center justify-between mt-4">
+                                <div>
+                                  <p className="text-xs text-muted-foreground">Potential</p>
+                                  <p className="text-lg font-bold text-success">
+                                    +{opp.potentialReturn.toFixed(2)}%
+                                  </p>
+                                </div>
+                                <div className="text-right">
+                                  <p className="text-xs text-muted-foreground">Score</p>
+                                  <p className="text-2xl font-bold text-primary">{opp.score}</p>
+                                </div>
+                              </div>
+                              <p className="text-xs text-muted-foreground mt-3">
+                                {opp.exchanges.join(' ↔ ')}
+                              </p>
+                            </CardContent>
+                          </Card>
+                        </Link>
+                      ))}
+                    </div>
+                    {!isPro && (
+                      <div className="mt-6 text-center">
+                        <p className="text-muted-foreground mb-2">Upgrade to see all opportunities</p>
+                        <Link to="/billing">
+                          <Button>Upgrade to PRO</Button>
+                        </Link>
+                      </div>
+                    )}
+                  </>
                 )}
               </CardContent>
             </Card>
