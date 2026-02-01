@@ -165,10 +165,12 @@ export default function Dashboard() {
       <header className="border-b border-border/50 sticky top-0 bg-background/95 backdrop-blur z-50">
         <div className="container mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="h-9 w-9 rounded-lg bg-primary/20 flex items-center justify-center">
-              <Radar className="h-5 w-5 text-primary" />
-            </div>
-            <span className="text-lg font-bold hidden sm:inline">IQ200 RADAR</span>
+            <img 
+              src="/favicon.jpg" 
+              alt="Diadonum" 
+              className="h-9 w-9 rounded-lg object-cover"
+            />
+            <span className="text-lg font-bold hidden sm:inline">Diadonum</span>
           </div>
           
           <div className="flex items-center gap-2">

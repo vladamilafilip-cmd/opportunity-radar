@@ -60,7 +60,7 @@ export default function RegisterPage() {
       } else {
         toast({
           title: "Account created!",
-          description: "Welcome to IQ200 RADAR. You're on the FREE plan.",
+          description: "Welcome to Diadonum. You're on the FREE plan.",
         });
         navigate("/dashboard");
       }
@@ -80,7 +80,7 @@ export default function RegisterPage() {
           <div className="flex justify-center mb-4">
             <img 
               src="/favicon.jpg" 
-              alt="IQ200 RADAR" 
+              alt="Diadonum" 
               className="h-16 w-16 rounded-xl object-cover"
             />
           </div>

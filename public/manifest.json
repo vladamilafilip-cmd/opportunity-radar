@@ -1,6 +1,6 @@
 {
-  "name": "IQ200 RADAR",
-  "short_name": "IQ200",
+  "name": "Diadonum",
+  "short_name": "Diadonum",
   "description": "Crypto Arbitrage Radar - Find funding and price arbitrage opportunities",
   "start_url": "/",
   "display": "standalone",

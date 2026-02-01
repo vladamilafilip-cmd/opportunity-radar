@@ -51,13 +51,13 @@ export default function LoginPage() {
           <div className="flex justify-center mb-4">
             <img 
               src="/favicon.jpg" 
-              alt="IQ200 RADAR" 
+              alt="Diadonum" 
               className="h-16 w-16 rounded-xl object-cover"
             />
           </div>
           <CardTitle className="text-2xl">Welcome Back</CardTitle>
           <CardDescription>
-            Sign in to access IQ200 RADAR
+            Sign in to access Diadonum
           </CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit}>

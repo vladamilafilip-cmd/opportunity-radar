@@ -46,7 +46,7 @@ export default function HealthCheck() {
     <div className="min-h-screen bg-background flex items-center justify-center p-6">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl">IQ200 RADAR</CardTitle>
+          <CardTitle className="text-2xl">Diadonum</CardTitle>
           <p className="text-muted-foreground">System Health Check</p>
         </CardHeader>
         <CardContent className="space-y-4">

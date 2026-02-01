@@ -23,10 +23,10 @@ export default function LandingPage() {
           <div className="flex items-center gap-2">
             <img 
               src="/favicon.jpg" 
-              alt="IQ200 RADAR" 
+              alt="Diadonum" 
               className="h-10 w-10 rounded-xl object-cover"
             />
-            <span className="text-xl font-bold">IQ200 RADAR</span>
+            <span className="text-xl font-bold">Diadonum</span>
           </div>
           <div className="flex items-center gap-3">
             <Link to="/login">
@@ -170,13 +170,13 @@ export default function LandingPage() {
             <div className="flex items-center gap-2">
               <img 
                 src="/favicon.jpg" 
-                alt="IQ200 RADAR" 
+                alt="Diadonum" 
                 className="h-6 w-6 rounded object-cover"
               />
-              <span className="font-semibold">IQ200 RADAR</span>
+              <span className="font-semibold">Diadonum</span>
             </div>
             <p className="text-sm text-muted-foreground text-center">
-              © 2024 IQ200 RADAR. Not financial advice. Trading involves risk.
+              © 2024 Diadonum. Not financial advice. Trading involves risk.
             </p>
           </div>
         </div>
