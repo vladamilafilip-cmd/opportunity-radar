@@ -3,7 +3,10 @@ import { supabase } from '@/integrations/supabase/client';
 import type { Session } from '@supabase/supabase-js';
 
 // Timeout for auth initialization to prevent infinite loading
-const AUTH_INIT_TIMEOUT_MS = 5000;
+const AUTH_INIT_TIMEOUT_MS = 8000;
+
+// Track if auth listener is already set up
+let authListenerInitialized = false;
 
 // App-specific user type with role/plan info
 interface AppUser {
@@ -76,6 +79,12 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
   error: null,
 
   initialize: async () => {
+    // Prevent duplicate initialization
+    if (authListenerInitialized) {
+      return;
+    }
+    authListenerInitialized = true;
+
     // Set up timeout to prevent infinite loading
     const timeoutId = setTimeout(() => {
       console.warn('Auth initialization timed out after', AUTH_INIT_TIMEOUT_MS, 'ms');
@@ -83,18 +92,27 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
     }, AUTH_INIT_TIMEOUT_MS);
 
     try {
-      // Set up auth state listener FIRST
-      supabase.auth.onAuthStateChange(async (event, session) => {
-        clearTimeout(timeoutId);
+      // Set up auth state listener FIRST (this handles subsequent auth changes)
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+        console.log('Auth state change:', event, session?.user?.email);
+        
+        // Don't process during initial load - getSession handles that
+        if (event === 'INITIAL_SESSION') {
+          return;
+        }
+        
         if (session?.user) {
-          const userData = await fetchUserData(session.user.id);
-          set({
-            session,
-            user: userData,
-            isAuthenticated: !!userData,
-            isLoading: false,
-            error: null,
-          });
+          // Use setTimeout to avoid Supabase deadlock
+          setTimeout(async () => {
+            const userData = await fetchUserData(session.user.id);
+            set({
+              session,
+              user: userData,
+              isAuthenticated: !!userData,
+              isLoading: false,
+              error: null,
+            });
+          }, 0);
         } else {
           set({
             session: null,
@@ -136,7 +154,7 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
   },
 
   login: async (email: string, password: string) => {
-    set({ isLoading: true });
+    set({ isLoading: true, error: null });
     
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
@@ -145,31 +163,40 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
       });
 
       if (error) {
-        set({ isLoading: false });
+        set({ isLoading: false, error: error.message });
         return { success: false, error: error.message };
       }
 
-      if (data.user) {
+      if (data.user && data.session) {
+        // Fetch user data immediately after login
         const userData = await fetchUserData(data.user.id);
+        
+        if (!userData) {
+          set({ isLoading: false, error: 'Failed to load user profile' });
+          return { success: false, error: 'Failed to load user profile. Please try again.' };
+        }
+        
         set({
           session: data.session,
           user: userData,
-          isAuthenticated: !!userData,
+          isAuthenticated: true,
           isLoading: false,
+          error: null,
         });
         return { success: true };
       }
 
-      set({ isLoading: false });
+      set({ isLoading: false, error: 'Login failed' });
       return { success: false, error: 'Login failed' };
     } catch (error) {
-      set({ isLoading: false });
+      console.error('Login error:', error);
+      set({ isLoading: false, error: 'An unexpected error occurred' });
       return { success: false, error: 'An unexpected error occurred' };
     }
   },
 
   register: async (email: string, password: string, name: string) => {
-    set({ isLoading: true });
+    set({ isLoading: true, error: null });
     
     try {
       const { data, error } = await supabase.auth.signUp({
@@ -198,6 +225,9 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
       }
 
       if (data.user && data.session) {
+        // Wait a moment for the trigger to create the profile
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
         // Update profile with display name
         await supabase
           .from('profiles')
@@ -223,11 +253,14 @@ export const useAuthStore = create<AuthStore>()((set, get) => ({
   },
 
   logout: async () => {
+    set({ isLoading: true });
     await supabase.auth.signOut();
     set({
       user: null,
       session: null,
       isAuthenticated: false,
+      isLoading: false,
+      error: null,
     });
   },
 
