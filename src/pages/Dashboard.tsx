@@ -163,6 +163,9 @@ export default function Dashboard() {
       }))
     : mockFundingRates;
 
+  // Risk tier priority for sorting (safe = 0, medium = 1, high = 2)
+  const riskPriority = (tier: string) => tier === 'safe' ? 0 : tier === 'medium' ? 1 : 2;
+
   const displaySignals = realSignals.length > 0
     ? realSignals.map((sig: any) => ({
         id: sig.id,
@@ -173,9 +176,23 @@ export default function Dashboard() {
         score: sig.score || 0,
         confidence: sig.confidence || 0,
         netProfit: sig.net_profit_estimate_percent || 0,
+        totalFee: 8, // Default fee bps (4 + 4 for long/short)
         riskTier: sig.score > 80 ? 'safe' : sig.score > 60 ? 'medium' : 'high' as const,
       }))
-    : mockFundingArbs;
+      .sort((a, b) => {
+        // First by risk (safe first)
+        const riskDiff = riskPriority(a.riskTier) - riskPriority(b.riskTier);
+        if (riskDiff !== 0) return riskDiff;
+        // Then by profit (highest first)
+        return (b.netProfit || 0) - (a.netProfit || 0);
+      })
+    : mockFundingArbs
+      .map((arb: any) => ({ ...arb, totalFee: 8 }))
+      .sort((a: any, b: any) => {
+        const riskDiff = riskPriority(a.riskTier) - riskPriority(b.riskTier);
+        if (riskDiff !== 0) return riskDiff;
+        return (b.spread || 0) - (a.spread || 0);
+      });
 
   return (
     <div className="min-h-screen bg-background">
@@ -405,10 +422,11 @@ export default function Dashboard() {
                       <Table>
                         <TableHeader>
                           <TableRow>
-                          <TableHead>Symbol</TableHead>
+                            <TableHead>Symbol</TableHead>
                             <TableHead>Long Exchange</TableHead>
                             <TableHead>Short Exchange</TableHead>
                             <TableHead className="text-right">Net Profit</TableHead>
+                            <TableHead className="text-right">Fee (bps)</TableHead>
                             <TableHead className="text-right">Est. Profit ($)</TableHead>
                             <TableHead className="text-right">Score</TableHead>
                             <TableHead>Risk</TableHead>
@@ -423,6 +441,9 @@ export default function Dashboard() {
                               <TableCell className="text-red-600">{arb.shortExchange || 'N/A'}</TableCell>
                               <TableCell className="text-right font-mono text-green-600">
                                 {Number.isFinite(arb.netProfit ?? arb.spread) ? `+${(((arb.netProfit ?? arb.spread) || 0) * 100).toFixed(4)}%` : '0.0000%'}
+                              </TableCell>
+                              <TableCell className="text-right font-mono text-muted-foreground">
+                                {arb.totalFee || 8}
                               </TableCell>
                               <TableCell className="text-right font-mono font-semibold text-green-600">
                                 {formatProfitAbsolute((arb.netProfit ?? arb.spread) || 0)}
@@ -469,23 +490,33 @@ export default function Dashboard() {
                       <Table>
                         <TableHeader>
                           <TableRow>
-                          <TableHead>Symbol</TableHead>
+                            <TableHead>Symbol</TableHead>
                             <TableHead>Buy Exchange</TableHead>
                             <TableHead>Sell Exchange</TableHead>
                             <TableHead className="text-right">Spread</TableHead>
+                            <TableHead className="text-right">Fee (bps)</TableHead>
                             <TableHead className="text-right">Est. Profit ($)</TableHead>
                             <TableHead className="text-right">Score</TableHead>
                             <TableHead>Risk</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {mockPriceArbs.map((arb: any) => (
+                          {[...mockPriceArbs]
+                            .sort((a: any, b: any) => {
+                              const riskDiff = riskPriority(a.riskTier) - riskPriority(b.riskTier);
+                              if (riskDiff !== 0) return riskDiff;
+                              return (b.spreadPercent || b.spread || 0) - (a.spreadPercent || a.spread || 0);
+                            })
+                            .map((arb: any) => (
                             <TableRow key={arb.id}>
                               <TableCell className="font-medium">{arb.symbol || 'N/A'}</TableCell>
                               <TableCell className="text-green-600">{arb.buyExchange || 'N/A'}</TableCell>
                               <TableCell className="text-red-600">{arb.sellExchange || 'N/A'}</TableCell>
                               <TableCell className="text-right font-mono text-green-600">
                                 {Number.isFinite(arb.spread) ? `+${(arb.spread * 100).toFixed(4)}%` : '0.0000%'}
+                              </TableCell>
+                              <TableCell className="text-right font-mono text-muted-foreground">
+                                8
                               </TableCell>
                               <TableCell className="text-right font-mono font-semibold text-green-600">
                                 {formatProfitAbsolute(arb.spread || 0)}
@@ -528,6 +559,7 @@ export default function Dashboard() {
                           <TableHead>Symbol</TableHead>
                           <TableHead>Type</TableHead>
                           <TableHead className="text-right">Est. Profit %</TableHead>
+                          <TableHead className="text-right">Fee (bps)</TableHead>
                           <TableHead className="text-right">Est. Profit ($)</TableHead>
                           <TableHead className="text-right">Score</TableHead>
                           <TableHead>Risk</TableHead>
@@ -535,7 +567,13 @@ export default function Dashboard() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                          {mockOpportunities.map((opp: any) => (
+                          {[...mockOpportunities]
+                            .sort((a: any, b: any) => {
+                              const riskDiff = riskPriority(a.riskTier) - riskPriority(b.riskTier);
+                              if (riskDiff !== 0) return riskDiff;
+                              return (b.potentialReturn || b.estimatedProfit || 0) - (a.potentialReturn || a.estimatedProfit || 0);
+                            })
+                            .map((opp: any) => (
                             <TableRow key={opp.id}>
                               <TableCell className="font-medium">{opp.symbol || 'N/A'}</TableCell>
                               <TableCell>
@@ -543,6 +581,9 @@ export default function Dashboard() {
                               </TableCell>
                               <TableCell className="text-right font-mono text-green-600">
                                 {Number.isFinite(opp.estimatedProfit) ? `+${(opp.estimatedProfit * 100).toFixed(4)}%` : '0.0000%'}
+                              </TableCell>
+                              <TableCell className="text-right font-mono text-muted-foreground">
+                                8
                               </TableCell>
                               <TableCell className="text-right font-mono font-semibold text-green-600">
                                 {formatProfitAbsolute(opp.estimatedProfit || 0)}
