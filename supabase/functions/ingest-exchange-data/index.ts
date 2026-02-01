@@ -1,18 +1,31 @@
 /**
- * CRYPTO ARBITRAGE OS - DATA INGESTION ENGINE
+ * IQ200 TIER SYSTEM - DATA INGESTION ENGINE
  * 
- * This edge function fetches real-time data from crypto exchanges:
- * - Funding rates for perpetual futures
- * - Mark prices and ticker data
+ * Tier-based multi-exchange data ingestion with:
+ * - Batch API calls per exchange (no individual pair polling)
+ * - Dynamic scheduling based on symbol/exchange tiers
+ * - Circuit breaker for failed exchanges
+ * - Liquidity pre-filtering
  * 
- * Supported exchanges:
- * - Binance (fapi.binance.com)
- * - Bybit (api.bybit.com)
- * 
- * Runs every minute via pg_cron to keep data fresh
+ * Runs every minute via pg_cron
  */
 
 import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { 
+  fetchExchangeData, 
+  ExchangeData, 
+  FundingData, 
+  TickerData 
+} from './exchangeFetchers.ts'
+import {
+  getDueSchedules,
+  groupSchedulesByExchange,
+  markScheduleSuccess,
+  markScheduleFailure,
+  getLiquidityFilters,
+  ScheduleEntry,
+  LiquidityFilters,
+} from './scheduler.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -29,16 +42,18 @@ interface MarketInfo {
   exchange_id: string;
   exchange_code: string;
   exchange_symbol: string;
+  symbol_tier: number;
+  base_asset: string;
 }
 
-interface FundingRateData {
+interface FundingRateRow {
   market_id: string;
   funding_rate: number;
   next_funding_ts: string | null;
   ts: string;
 }
 
-interface PriceData {
+interface PriceRow {
   market_id: string;
   last_price: number;
   mark_price: number;
@@ -49,177 +64,136 @@ interface PriceData {
   ts: string;
 }
 
-interface IngestionStats {
+interface IngestionResult {
   exchange: string;
-  funding_rates_fetched: number;
-  prices_fetched: number;
+  symbolTiers: number[];
+  fundingCount: number;
+  priceCount: number;
+  skippedLowLiquidity: number;
   errors: string[];
 }
 
 // ============================================
-// EXCHANGE API FETCHERS
+// SYMBOL MAPPING HELPERS
 // ============================================
 
 /**
- * Fetch funding rates from Binance Futures
- * API: GET /fapi/v1/premiumIndex
+ * Normalize exchange symbols to match our DB format
  */
-async function fetchBinanceFundingRates(): Promise<Map<string, { rate: number; nextFundingTs: string; markPrice: number }>> {
-  const result = new Map();
-  
-  try {
-    const response = await fetch('https://fapi.binance.com/fapi/v1/premiumIndex');
-    if (!response.ok) throw new Error(`Binance API error: ${response.status}`);
-    
-    const data = await response.json();
-    
-    for (const item of data) {
-      result.set(item.symbol, {
-        rate: parseFloat(item.lastFundingRate),
-        nextFundingTs: new Date(item.nextFundingTime).toISOString(),
-        markPrice: parseFloat(item.markPrice),
-      });
-    }
-  } catch (error) {
-    console.error('Binance funding rates error:', error);
+function normalizeSymbol(exchangeCode: string, rawSymbol: string): string {
+  switch (exchangeCode) {
+    case 'okx':
+      // OKX: BTC-USDT-SWAP -> BTCUSDT
+      return rawSymbol.replace('-USDT-SWAP', 'USDT').replace('-SWAP', '');
+    case 'gate':
+      // Gate: BTC_USDT -> BTCUSDT
+      return rawSymbol.replace('_USDT', 'USDT');
+    case 'kucoin':
+      // KuCoin: BTCUSDTM -> BTCUSDT
+      return rawSymbol.replace('USDTM', 'USDT');
+    case 'htx':
+      // HTX: BTC-USDT -> BTCUSDT
+      return rawSymbol.replace('-USDT', 'USDT');
+    case 'mexc':
+      // MEXC: BTC_USDT -> BTCUSDT
+      return rawSymbol.replace('_USDT', 'USDT');
+    case 'kraken':
+      // Kraken: PF_BTCUSD -> BTCUSDT (approximate)
+      return rawSymbol.replace('PF_', '').replace('USD', 'USDT');
+    case 'deribit':
+      // Deribit: BTC-PERPETUAL -> BTCUSDT
+      return rawSymbol.replace('-PERPETUAL', 'USDT');
+    default:
+      // Binance/Bybit: already in BTCUSDT format
+      return rawSymbol;
   }
-  
-  return result;
 }
 
 /**
- * Fetch ticker data from Binance Futures
- * API: GET /fapi/v1/ticker/24hr
+ * Get exchange-specific symbol format from base asset
  */
-async function fetchBinanceTickers(): Promise<Map<string, { lastPrice: number; volume: number; bidPrice: number; askPrice: number }>> {
-  const result = new Map();
-  
-  try {
-    const response = await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr');
-    if (!response.ok) throw new Error(`Binance ticker API error: ${response.status}`);
-    
-    const data = await response.json();
-    
-    for (const item of data) {
-      result.set(item.symbol, {
-        lastPrice: parseFloat(item.lastPrice),
-        volume: parseFloat(item.quoteVolume),
-        bidPrice: parseFloat(item.bidPrice),
-        askPrice: parseFloat(item.askPrice),
-      });
-    }
-  } catch (error) {
-    console.error('Binance tickers error:', error);
+function getExchangeSymbol(exchangeCode: string, baseAsset: string): string {
+  switch (exchangeCode) {
+    case 'okx':
+      return `${baseAsset}-USDT-SWAP`;
+    case 'gate':
+      return `${baseAsset}_USDT`;
+    case 'kucoin':
+      return `${baseAsset}USDTM`;
+    case 'htx':
+      return `${baseAsset}-USDT`;
+    case 'mexc':
+      return `${baseAsset}_USDT`;
+    case 'kraken':
+      return `PF_${baseAsset}USD`;
+    case 'deribit':
+      return `${baseAsset}-PERPETUAL`;
+    default:
+      return `${baseAsset}USDT`;
   }
-  
-  return result;
-}
-
-/**
- * Fetch open interest from Binance Futures
- * API: GET /fapi/v1/openInterest
- */
-async function fetchBinanceOpenInterest(symbols: string[]): Promise<Map<string, number>> {
-  const result = new Map();
-  
-  // Limit concurrent requests
-  const batchSize = 10;
-  for (let i = 0; i < symbols.length; i += batchSize) {
-    const batch = symbols.slice(i, i + batchSize);
-    
-    const promises = batch.map(async (symbol) => {
-      try {
-        const response = await fetch(`https://fapi.binance.com/fapi/v1/openInterest?symbol=${symbol}`);
-        if (response.ok) {
-          const data = await response.json();
-          result.set(symbol, parseFloat(data.openInterest) * parseFloat(data.openInterest > 0 ? '1' : '0'));
-        }
-      } catch (error) {
-        // Silently skip failed OI fetches
-      }
-    });
-    
-    await Promise.all(promises);
-  }
-  
-  return result;
-}
-
-/**
- * Fetch funding rates from Bybit
- * API: GET /v5/market/tickers?category=linear
- */
-async function fetchBybitData(): Promise<{
-  funding: Map<string, { rate: number; nextFundingTs: string }>;
-  tickers: Map<string, { lastPrice: number; markPrice: number; volume: number; bidPrice: number; askPrice: number; openInterest: number }>;
-}> {
-  const funding = new Map();
-  const tickers = new Map();
-  
-  try {
-    const response = await fetch('https://api.bybit.com/v5/market/tickers?category=linear');
-    if (!response.ok) throw new Error(`Bybit API error: ${response.status}`);
-    
-    const data = await response.json();
-    
-    if (data.result && data.result.list) {
-      for (const item of data.result.list) {
-        // Only USDT perpetuals
-        if (!item.symbol.endsWith('USDT')) continue;
-        
-        funding.set(item.symbol, {
-          rate: parseFloat(item.fundingRate || '0'),
-          nextFundingTs: item.nextFundingTime ? new Date(parseInt(item.nextFundingTime)).toISOString() : null,
-        });
-        
-        tickers.set(item.symbol, {
-          lastPrice: parseFloat(item.lastPrice || '0'),
-          markPrice: parseFloat(item.markPrice || item.lastPrice || '0'),
-          volume: parseFloat(item.turnover24h || '0'),
-          bidPrice: parseFloat(item.bid1Price || '0'),
-          askPrice: parseFloat(item.ask1Price || '0'),
-          openInterest: parseFloat(item.openInterest || '0'),
-        });
-      }
-    }
-  } catch (error) {
-    console.error('Bybit data error:', error);
-  }
-  
-  return { funding, tickers };
 }
 
 // ============================================
-// DATA INGESTION CORE
+// LIQUIDITY FILTER
+// ============================================
+
+function passesLiquidityFilter(
+  ticker: TickerData | undefined, 
+  filters: LiquidityFilters
+): boolean {
+  if (!ticker) return false;
+  
+  // Skip low volume pairs
+  if (ticker.volume24h < filters.min_volume_24h) return false;
+  
+  // Skip high spread (illiquid) pairs
+  if (ticker.bidPrice > 0 && ticker.askPrice > 0) {
+    const spreadBps = ((ticker.askPrice - ticker.bidPrice) / ticker.askPrice) * 10000;
+    if (spreadBps > filters.max_spread_bps) return false;
+  }
+  
+  return true;
+}
+
+// ============================================
+// MAIN INGESTION LOGIC
 // ============================================
 
 async function ingestExchangeData(supabase: SupabaseClient): Promise<{
   success: boolean;
-  stats: IngestionStats[];
+  results: IngestionResult[];
   totalRecords: { funding: number; prices: number };
   error?: string;
 }> {
   const now = new Date().toISOString();
-  const allStats: IngestionStats[] = [];
+  const results: IngestionResult[] = [];
   let totalFunding = 0;
   let totalPrices = 0;
 
-  // Log ingestion run
-  const { data: runData } = await supabase
-    .from('ingestion_runs')
-    .insert({
-      source: 'multi-exchange',
-      run_type: 'scheduled',
-      status: 'running',
-    } as any)
-    .select('id')
-    .single();
-
-  const runId = runData?.id;
-
   try {
     // ========================================
-    // STEP 1: Get all active markets
+    // STEP 1: Get due schedules
+    // ========================================
+    const dueSchedules = await getDueSchedules(supabase);
+    
+    if (dueSchedules.length === 0) {
+      return {
+        success: true,
+        results: [],
+        totalRecords: { funding: 0, prices: 0 },
+      };
+    }
+
+    // Group by exchange for batch fetching
+    const schedulesByExchange = groupSchedulesByExchange(dueSchedules);
+    
+    // ========================================
+    // STEP 2: Get liquidity filters
+    // ========================================
+    const liquidityFilters = await getLiquidityFilters(supabase);
+
+    // ========================================
+    // STEP 3: Get all active markets
     // ========================================
     const { data: markets, error: marketsError } = await supabase
       .from('markets')
@@ -231,196 +205,175 @@ async function ingestExchangeData(supabase: SupabaseClient): Promise<{
         exchanges!inner (
           id,
           code
+        ),
+        symbols!inner (
+          id,
+          base_asset,
+          symbol_tier
         )
       `)
       .eq('is_active', true);
 
     if (marketsError) throw new Error(`Markets fetch error: ${marketsError.message}`);
 
-    // Build market lookup maps
-    const marketsByExchange = new Map<string, MarketInfo[]>();
+    // Build market lookup by exchange and normalized symbol
+    const marketLookup = new Map<string, MarketInfo>();
     
     for (const market of (markets || []) as any[]) {
-      const exchangeCode = market.exchanges.code.toLowerCase();
-      if (!marketsByExchange.has(exchangeCode)) {
-        marketsByExchange.set(exchangeCode, []);
-      }
-      marketsByExchange.get(exchangeCode)!.push({
+      const key = `${market.exchanges.code}:${market.symbols.base_asset}`;
+      marketLookup.set(key, {
         market_id: market.id,
         symbol_id: market.symbol_id,
         exchange_id: market.exchange_id,
-        exchange_code: exchangeCode,
+        exchange_code: market.exchanges.code,
         exchange_symbol: market.exchange_symbol,
+        symbol_tier: market.symbols.symbol_tier,
+        base_asset: market.symbols.base_asset,
       });
     }
 
     // ========================================
-    // STEP 2: Fetch data from Binance
+    // STEP 4: Fetch and process each exchange
     // ========================================
-    const binanceStats: IngestionStats = {
-      exchange: 'binance',
-      funding_rates_fetched: 0,
-      prices_fetched: 0,
-      errors: [],
-    };
+    const exchangePromises = Array.from(schedulesByExchange.entries()).map(
+      async ([exchangeCode, schedules]) => {
+        const result: IngestionResult = {
+          exchange: exchangeCode,
+          symbolTiers: schedules.map(s => s.symbol_tier),
+          fundingCount: 0,
+          priceCount: 0,
+          skippedLowLiquidity: 0,
+          errors: [],
+        };
 
-    const binanceMarkets = marketsByExchange.get('binance') || [];
+        try {
+          // Fetch all data from exchange (single batch call)
+          const exchangeData = await fetchExchangeData(exchangeCode);
+          result.errors.push(...exchangeData.errors);
+
+          if (exchangeData.errors.length > 0 && 
+              exchangeData.funding.size === 0 && 
+              exchangeData.tickers.size === 0) {
+            // Complete failure - mark all schedules as failed
+            for (const schedule of schedules) {
+              await markScheduleFailure(supabase, schedule.id, schedule.consecutive_failures);
+            }
+            return result;
+          }
+
+          // Determine which symbol tiers to process
+          const tiersToProcess = new Set(schedules.map(s => s.symbol_tier));
+
+          const fundingRows: FundingRateRow[] = [];
+          const priceRows: PriceRow[] = [];
+
+          // Process each symbol we have a market for
+          for (const [key, market] of marketLookup) {
+            if (market.exchange_code !== exchangeCode) continue;
+            if (!tiersToProcess.has(market.symbol_tier)) continue;
+
+            // Find matching data from exchange
+            const exchangeSymbol = getExchangeSymbol(exchangeCode, market.base_asset);
+            const funding = exchangeData.funding.get(exchangeSymbol);
+            const ticker = exchangeData.tickers.get(exchangeSymbol);
+
+            // Apply liquidity filter
+            if (!passesLiquidityFilter(ticker, liquidityFilters)) {
+              result.skippedLowLiquidity++;
+              continue;
+            }
+
+            if (funding) {
+              fundingRows.push({
+                market_id: market.market_id,
+                funding_rate: funding.fundingRate,
+                next_funding_ts: funding.nextFundingTs,
+                ts: now,
+              });
+            }
+
+            if (ticker || funding) {
+              priceRows.push({
+                market_id: market.market_id,
+                last_price: ticker?.lastPrice || 0,
+                mark_price: funding?.markPrice || ticker?.markPrice || ticker?.lastPrice || 0,
+                bid_price: ticker?.bidPrice || null,
+                ask_price: ticker?.askPrice || null,
+                volume_24h: ticker?.volume24h || null,
+                open_interest: ticker?.openInterest || null,
+                ts: now,
+              });
+            }
+          }
+
+          // Insert funding rates
+          if (fundingRows.length > 0) {
+            const { error } = await supabase.from('funding_rates').insert(fundingRows as any[]);
+            if (error) {
+              result.errors.push(`Funding insert: ${error.message}`);
+            } else {
+              result.fundingCount = fundingRows.length;
+            }
+          }
+
+          // Insert prices
+          if (priceRows.length > 0) {
+            const { error } = await supabase.from('prices').insert(priceRows as any[]);
+            if (error) {
+              result.errors.push(`Prices insert: ${error.message}`);
+            } else {
+              result.priceCount = priceRows.length;
+            }
+          }
+
+          // Mark schedules as success
+          for (const schedule of schedules) {
+            await markScheduleSuccess(supabase, schedule.id, schedule.interval_minutes);
+          }
+
+        } catch (error: any) {
+          result.errors.push(error.message);
+          // Mark all schedules as failed
+          for (const schedule of schedules) {
+            await markScheduleFailure(supabase, schedule.id, schedule.consecutive_failures);
+          }
+        }
+
+        return result;
+      }
+    );
+
+    // Execute all exchange fetches in parallel
+    const exchangeResults = await Promise.all(exchangePromises);
     
-    if (binanceMarkets.length > 0) {
-      // Fetch all Binance data in parallel
-      const [binanceFunding, binanceTickers] = await Promise.all([
-        fetchBinanceFundingRates(),
-        fetchBinanceTickers(),
-      ]);
-
-      // Get symbols for OI fetch
-      const binanceSymbols = binanceMarkets.map(m => m.exchange_symbol);
-      const binanceOI = await fetchBinanceOpenInterest(binanceSymbols);
-
-      const fundingRates: FundingRateData[] = [];
-      const prices: PriceData[] = [];
-
-      for (const market of binanceMarkets) {
-        const fundingData = binanceFunding.get(market.exchange_symbol);
-        const tickerData = binanceTickers.get(market.exchange_symbol);
-        const oi = binanceOI.get(market.exchange_symbol);
-
-        if (fundingData) {
-          fundingRates.push({
-            market_id: market.market_id,
-            funding_rate: fundingData.rate,
-            next_funding_ts: fundingData.nextFundingTs,
-            ts: now,
-          });
-        }
-
-        if (tickerData || fundingData) {
-          prices.push({
-            market_id: market.market_id,
-            last_price: tickerData?.lastPrice || 0,
-            mark_price: fundingData?.markPrice || tickerData?.lastPrice || 0,
-            bid_price: tickerData?.bidPrice || null,
-            ask_price: tickerData?.askPrice || null,
-            volume_24h: tickerData?.volume || null,
-            open_interest: oi || null,
-            ts: now,
-          });
-        }
-      }
-
-      // Insert Binance data
-      if (fundingRates.length > 0) {
-        const { error } = await supabase.from('funding_rates').insert(fundingRates as any[]);
-        if (error) {
-          binanceStats.errors.push(`Funding insert: ${error.message}`);
-        } else {
-          binanceStats.funding_rates_fetched = fundingRates.length;
-          totalFunding += fundingRates.length;
-        }
-      }
-
-      if (prices.length > 0) {
-        const { error } = await supabase.from('prices').insert(prices as any[]);
-        if (error) {
-          binanceStats.errors.push(`Prices insert: ${error.message}`);
-        } else {
-          binanceStats.prices_fetched = prices.length;
-          totalPrices += prices.length;
-        }
-      }
-    }
-
-    allStats.push(binanceStats);
-
-    // ========================================
-    // STEP 3: Fetch data from Bybit
-    // ========================================
-    const bybitStats: IngestionStats = {
-      exchange: 'bybit',
-      funding_rates_fetched: 0,
-      prices_fetched: 0,
-      errors: [],
-    };
-
-    const bybitMarkets = marketsByExchange.get('bybit') || [];
-    
-    if (bybitMarkets.length > 0) {
-      const { funding: bybitFunding, tickers: bybitTickers } = await fetchBybitData();
-
-      const fundingRates: FundingRateData[] = [];
-      const prices: PriceData[] = [];
-
-      for (const market of bybitMarkets) {
-        const fundingData = bybitFunding.get(market.exchange_symbol);
-        const tickerData = bybitTickers.get(market.exchange_symbol);
-
-        if (fundingData) {
-          fundingRates.push({
-            market_id: market.market_id,
-            funding_rate: fundingData.rate,
-            next_funding_ts: fundingData.nextFundingTs,
-            ts: now,
-          });
-        }
-
-        if (tickerData) {
-          prices.push({
-            market_id: market.market_id,
-            last_price: tickerData.lastPrice,
-            mark_price: tickerData.markPrice,
-            bid_price: tickerData.bidPrice,
-            ask_price: tickerData.askPrice,
-            volume_24h: tickerData.volume,
-            open_interest: tickerData.openInterest,
-            ts: now,
-          });
-        }
-      }
-
-      // Insert Bybit data
-      if (fundingRates.length > 0) {
-        const { error } = await supabase.from('funding_rates').insert(fundingRates as any[]);
-        if (error) {
-          bybitStats.errors.push(`Funding insert: ${error.message}`);
-        } else {
-          bybitStats.funding_rates_fetched = fundingRates.length;
-          totalFunding += fundingRates.length;
-        }
-      }
-
-      if (prices.length > 0) {
-        const { error } = await supabase.from('prices').insert(prices as any[]);
-        if (error) {
-          bybitStats.errors.push(`Prices insert: ${error.message}`);
-        } else {
-          bybitStats.prices_fetched = prices.length;
-          totalPrices += prices.length;
-        }
-      }
-    }
-
-    allStats.push(bybitStats);
-
-    // ========================================
-    // STEP 4: Update ingestion run log
-    // ========================================
-    if (runId) {
-      await supabase
-        .from('ingestion_runs')
-        .update({
-          status: 'completed',
-          completed_at: new Date().toISOString(),
-          records_fetched: totalFunding + totalPrices,
-          records_inserted: totalFunding + totalPrices,
-          metadata: { stats: allStats },
-        } as any)
-        .eq('id', runId);
+    for (const result of exchangeResults) {
+      results.push(result);
+      totalFunding += result.fundingCount;
+      totalPrices += result.priceCount;
     }
 
     // ========================================
-    // STEP 5: Trigger metrics engine
+    // STEP 5: Log ingestion run
     // ========================================
-    // Call the metrics engine to process new data
+    await supabase
+      .from('ingestion_runs')
+      .insert({
+        source: 'tier-based-multi-exchange',
+        run_type: 'scheduled',
+        status: 'completed',
+        completed_at: new Date().toISOString(),
+        records_fetched: totalFunding + totalPrices,
+        records_inserted: totalFunding + totalPrices,
+        metadata: { 
+          results,
+          exchanges_processed: results.length,
+          schedules_due: dueSchedules.length,
+        },
+      } as any);
+
+    // ========================================
+    // STEP 6: Trigger metrics engine
+    // ========================================
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     
@@ -438,27 +391,26 @@ async function ingestExchangeData(supabase: SupabaseClient): Promise<{
 
     return {
       success: true,
-      stats: allStats,
+      results,
       totalRecords: { funding: totalFunding, prices: totalPrices },
     };
 
   } catch (error: any) {
     console.error('Ingestion error:', error);
 
-    if (runId) {
-      await supabase
-        .from('ingestion_runs')
-        .update({
-          status: 'failed',
-          completed_at: new Date().toISOString(),
-          errors: [{ message: error.message, stack: error.stack }],
-        } as any)
-        .eq('id', runId);
-    }
+    await supabase
+      .from('ingestion_runs')
+      .insert({
+        source: 'tier-based-multi-exchange',
+        run_type: 'scheduled',
+        status: 'failed',
+        completed_at: new Date().toISOString(),
+        errors: [{ message: error.message, stack: error.stack }],
+      } as any);
 
     return {
       success: false,
-      stats: allStats,
+      results,
       totalRecords: { funding: totalFunding, prices: totalPrices },
       error: error.message,
     };
@@ -490,7 +442,7 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: result.success,
-        stats: result.stats,
+        results: result.results,
         total: result.totalRecords,
         error: result.error,
         timestamp: new Date().toISOString(),
