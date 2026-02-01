@@ -218,27 +218,26 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-background relative">
-      {/* Watermark Logo */}
-      <div className="fixed inset-0 pointer-events-none z-0 flex items-center justify-center overflow-hidden">
-        <div className="opacity-[0.05] flex flex-col items-center gap-4">
-          <img 
-            src="/favicon.jpg" 
-            alt="" 
-            className="w-64 h-64 rounded-3xl object-cover"
-          />
-          <span className="text-6xl font-bold tracking-wider text-foreground">DIADONUM</span>
-        </div>
-      </div>
       {/* Header */}
       <header className="border-b border-border/50 sticky top-0 bg-background/95 backdrop-blur z-50">
         <div className="container mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <img 
-              src="/favicon.jpg" 
-              alt="Diadonum" 
-              className="h-9 w-9 rounded-lg object-cover"
-            />
-            <span className="text-lg font-bold hidden sm:inline">Diadonum</span>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <img 
+                src="/favicon.jpg" 
+                alt="Diadonum" 
+                className="h-9 w-9 rounded-lg object-cover"
+              />
+              <span className="text-lg font-bold hidden sm:inline">Diadonum</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <img 
+                src="/favicon.jpg" 
+                alt="Diadonum" 
+                className="h-9 w-9 rounded-lg object-cover"
+              />
+              <span className="text-lg font-bold hidden sm:inline">Diadonum</span>
+            </div>
           </div>
           
           <div className="flex items-center gap-2">
