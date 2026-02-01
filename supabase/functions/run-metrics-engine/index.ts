@@ -339,7 +339,8 @@ async function runMetricsEngine(supabase: SupabaseClient): Promise<{
       const funding8h = normalizeFunding8h(data.funding_rate, intervalHours);
       const fundingAnnual = annualize8hRate(funding8h);
       
-      const spreadBps = 5; // Default estimate
+      // Reduce spread estimate for liquid markets (was 5, now 2)
+      const spreadBps = 2;
       
       const takerFeeBps = data.taker_fee * 10000;
       const slippageBps = config.costs.default_slippage_bps;
@@ -420,24 +421,31 @@ async function runMetricsEngine(supabase: SupabaseClient): Promise<{
     for (const [symbolId, metrics] of symbolMetrics) {
       if (metrics.length < 2) continue;
 
+      console.log(`[Engine] Processing symbol ${symbolId} with ${metrics.length} metrics for arbitrage`);
+
       for (let i = 0; i < metrics.length; i++) {
         for (let j = i + 1; j < metrics.length; j++) {
           const a = metrics[i];
           const b = metrics[j];
 
           let long: ComputedMetric, short: ComputedMetric;
-          let longData: MarketData, shortData: MarketData;
+          let longData: MarketData | undefined, shortData: MarketData | undefined;
 
           if (a.funding_rate_8h > b.funding_rate_8h) {
             short = a;
             long = b;
-            shortData = marketDataMap.get(a.market_id)!;
-            longData = marketDataMap.get(b.market_id)!;
+            shortData = marketDataMap.get(a.market_id);
+            longData = marketDataMap.get(b.market_id);
           } else {
             short = b;
             long = a;
-            shortData = marketDataMap.get(b.market_id)!;
-            longData = marketDataMap.get(a.market_id)!;
+            shortData = marketDataMap.get(b.market_id);
+            longData = marketDataMap.get(a.market_id);
+          }
+
+          if (!longData || !shortData) {
+            console.log(`[Engine] Missing market data for ${a.market_id} or ${b.market_id}`);
+            continue;
           }
 
           const fundingSpread8h = short.funding_rate_8h - long.funding_rate_8h;
@@ -455,6 +463,9 @@ async function runMetricsEngine(supabase: SupabaseClient): Promise<{
           const grossEdge8hBps = fundingSpread8h * 10000;
           const netEdge8hBps = grossEdge8hBps - totalCostBps;
           const netEdgeAnnualPercent = annualize8hRate(netEdge8hBps / 10000) * 100;
+
+          // Log calculations for debugging
+          console.log(`[Engine] ${longData.symbol_name}: gross=${grossEdge8hBps.toFixed(2)}bps, costs=${totalCostBps.toFixed(2)}bps, net=${netEdge8hBps.toFixed(2)}bps`);
 
           if (netEdge8hBps <= 0) continue;
 
