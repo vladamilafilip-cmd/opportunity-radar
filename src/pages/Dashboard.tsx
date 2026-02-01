@@ -314,8 +314,8 @@ export default function Dashboard() {
                           <TableRow key={`${rate.exchange}-${rate.symbol}-${idx}`}>
                             <TableCell className="font-medium">{rate.exchange || 'N/A'}</TableCell>
                             <TableCell>{rate.symbol || 'N/A'}</TableCell>
-                            <TableCell className={`text-right font-mono ${(rate.fundingRate || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                              {(rate.fundingRate || 0) >= 0 ? '+' : ''}{((rate.fundingRate || 0) * 100).toFixed(4)}%
+                            <TableCell className={`text-right font-mono ${Number.isFinite(rate.fundingRate) && rate.fundingRate >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                              {Number.isFinite(rate.fundingRate) ? `${rate.fundingRate >= 0 ? '+' : ''}${(rate.fundingRate * 100).toFixed(4)}%` : 'N/A'}
                             </TableCell>
                             <TableCell className="text-muted-foreground">
                               {rate.nextFundingTime ? new Date(rate.nextFundingTime).toLocaleTimeString() : 'N/A'}
@@ -375,9 +375,9 @@ export default function Dashboard() {
                               <TableCell className="text-green-600">{arb.longExchange || 'N/A'}</TableCell>
                               <TableCell className="text-red-600">{arb.shortExchange || 'N/A'}</TableCell>
                               <TableCell className="text-right font-mono text-green-600">
-                                +{((arb.netProfit || arb.spread || 0) * 100).toFixed(4)}%
+                                {Number.isFinite(arb.netProfit ?? arb.spread) ? `+${(((arb.netProfit ?? arb.spread) || 0) * 100).toFixed(4)}%` : 'N/A'}
                               </TableCell>
-                              <TableCell className="text-right font-bold">{arb.score || 0}</TableCell>
+                              <TableCell className="text-right font-bold">{Number.isFinite(arb.score) ? arb.score : 'N/A'}</TableCell>
                               <TableCell>
                                 <RiskBadge tier={arb.riskTier || 'medium'} />
                               </TableCell>
@@ -430,13 +430,13 @@ export default function Dashboard() {
                         <TableBody>
                           {mockPriceArbs.map((arb: any) => (
                             <TableRow key={arb.id}>
-                              <TableCell className="font-medium">{arb.symbol}</TableCell>
-                              <TableCell className="text-green-600">{arb.buyExchange}</TableCell>
-                              <TableCell className="text-red-600">{arb.sellExchange}</TableCell>
+                              <TableCell className="font-medium">{arb.symbol || 'N/A'}</TableCell>
+                              <TableCell className="text-green-600">{arb.buyExchange || 'N/A'}</TableCell>
+                              <TableCell className="text-red-600">{arb.sellExchange || 'N/A'}</TableCell>
                               <TableCell className="text-right font-mono text-green-600">
-                                +{(arb.spread * 100).toFixed(4)}%
+                                {Number.isFinite(arb.spread) ? `+${(arb.spread * 100).toFixed(4)}%` : 'N/A'}
                               </TableCell>
-                              <TableCell className="text-right font-bold">{arb.score}</TableCell>
+                              <TableCell className="text-right font-bold">{Number.isFinite(arb.score) ? arb.score : 'N/A'}</TableCell>
                               <TableCell>
                                 <RiskBadge tier={arb.riskTier} />
                               </TableCell>
@@ -480,19 +480,19 @@ export default function Dashboard() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {mockOpportunities.map((opp: any) => (
-                          <TableRow key={opp.id}>
-                            <TableCell className="font-medium">{opp.symbol}</TableCell>
-                            <TableCell>
-                              <Badge variant="outline">{opp.type}</Badge>
-                            </TableCell>
-                            <TableCell className="text-right font-mono text-green-600">
-                              +{(opp.estimatedProfit * 100).toFixed(4)}%
-                            </TableCell>
-                            <TableCell className="text-right font-bold">{opp.score}</TableCell>
-                            <TableCell>
-                              <RiskBadge tier={opp.riskTier} />
-                            </TableCell>
+                          {mockOpportunities.map((opp: any) => (
+                            <TableRow key={opp.id}>
+                              <TableCell className="font-medium">{opp.symbol || 'N/A'}</TableCell>
+                              <TableCell>
+                                <Badge variant="outline">{opp.type || 'N/A'}</Badge>
+                              </TableCell>
+                              <TableCell className="text-right font-mono text-green-600">
+                                {Number.isFinite(opp.estimatedProfit) ? `+${(opp.estimatedProfit * 100).toFixed(4)}%` : 'N/A'}
+                              </TableCell>
+                              <TableCell className="text-right font-bold">{Number.isFinite(opp.score) ? opp.score : 'N/A'}</TableCell>
+                              <TableCell>
+                                <RiskBadge tier={opp.riskTier || 'medium'} />
+                              </TableCell>
                             <TableCell>
                               <Link to={`/opportunity/${opp.id}`}>
                                 <Button size="sm" variant="outline">
