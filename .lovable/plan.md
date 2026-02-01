@@ -1,226 +1,203 @@
 
-
-# Fix Green Spinner Issue - Complete End-to-End Solution
+# Complete End-to-End Fix for IQ200 RADAR
 
 ## Root Cause Analysis
 
-### Primary Problem: Authentication State Race Condition
-The green spinner is caused by `isLoading: true` in the auth store that never resolves quickly enough. The flow is:
+### Primary Problem: Race Condition in Auth Initialization + Route Blocking
 
-1. `App.tsx` renders `AuthInitializer` which calls `initialize()`
-2. `PublicRoute` immediately checks `isLoading` (which starts as `true`)
-3. While `isLoading` is `true`, `LoadingScreen` with spinner is shown
-4. The `onAuthStateChange` listener is async and may not fire synchronously
-5. If the Supabase client fails to initialize (network issue, etc.), `isLoading` may stay `true`
+The infinite green spinner is caused by a chain of issues:
+
+1. **Route `/` is wrapped in `PublicRoute`** which checks `isLoading` from authStore
+2. **AuthInitializer calls `initialize()`** which sets up async Supabase auth
+3. **`onAuthStateChange` listener is async** and may not fire synchronously
+4. **While `isLoading: true`, ALL routes show `LoadingScreen` with spinner**
+5. **The 5-second timeout was added but the flow still blocks rendering**
+
+The critical flaw: The route `/` (Landing page) should NOT be blocked by auth loading. Users should see the Landing page immediately without waiting for auth.
 
 ### Secondary Issues Found
-1. **Index.tsx is orphaned**: The file exists but is not used in routing (route `/` uses `Landing.tsx`)
-2. **No timeout/fallback**: If auth initialization fails silently, spinner shows forever
-3. **No error boundaries**: Auth errors aren't caught and displayed to user
-4. **Console warnings**: React ref warnings from route wrapper components
+
+1. **Health Check at wrong route**: Health Check is at `/health` but user expects it at `/`
+2. **No ErrorBoundary**: Runtime errors cause blank screen or infinite spinner
+3. **Dashboard uses mock data only**: Not connected to real Supabase tables
+4. **Supabase client crashes on missing env**: `createClient()` throws if URL/Key are undefined
+5. **No connection status exports**: Other components can't check if Supabase is ready
 
 ---
 
 ## Implementation Plan
 
-### Step 1: Add Initialization Timeout and Error Handling in authStore.ts
+### Phase 1: Stop the Infinite Spinner (Make UI Always Render)
 
-Add a timeout mechanism to prevent infinite loading:
+**Changes to `src/App.tsx`:**
 
 ```text
-File: src/store/authStore.ts
-
-Changes:
-- Add 5-second timeout for auth initialization
-- Add error state to store
-- Always set isLoading: false after timeout
-- Add console logging for debugging
+1. Move Landing page OUTSIDE PublicRoute wrapper (no auth check needed)
+2. Add ErrorBoundary component around the app root
+3. Make /health route the health check (keep it outside auth)
+4. Ensure fallback UI renders even if auth times out
 ```
 
-### Step 2: Fix PublicRoute/ProtectedRoute Components in App.tsx
+**New behavior:**
+- `/` renders Landing immediately without waiting for auth
+- `/health` renders Health Check immediately without waiting for auth
+- Other routes wait for auth but show timeout after 5 seconds
 
-The route wrappers need better error handling:
+### Phase 2: Implement Safe Supabase Client
+
+**Changes to `src/integrations/supabase/client.ts`:**
+
+Since this file is auto-generated and should NOT be edited, we will create a **wrapper module** instead:
+
+**New file: `src/lib/supabaseHelpers.ts`**
 
 ```text
-File: src/App.tsx
-
-Changes:
-- Add error state display in LoadingScreen
-- Add timeout indicator (show message after 3 seconds)
-- Add "Retry" button if loading takes too long
-- Remove orphaned Index import if present
+Purpose: Safe wrapper around supabase client
+Exports:
+- supabaseReady: boolean - true if env vars present
+- getSupabaseEnvStatus(): { hasUrl, hasKey, urlMasked }
+- safeQuery(): wrapper that handles errors gracefully
 ```
 
-### Step 3: Create Health Check Component
+This approach respects the auto-generated client while adding safety utilities.
 
-Replace orphaned `Index.tsx` with a connectivity/health check utility:
+### Phase 3: Enhanced Health Check at `/health`
+
+**Changes to `src/pages/Index.tsx`:**
 
 ```text
-File: src/pages/Index.tsx -> convert to HealthCheck component
-
-Features:
-- Display env var status (VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY)
-- "Test DB" button that runs: select * from computed_metrics_v2 limit 1
-- Fallback query: select * from symbols limit 1
-- Show results in monospace panel
-- Show errors clearly
+Current: Basic health check with one "Test DB" button
+New:
+- Show Supabase client status (READY/NOT READY)
+- Multiple test buttons for different tables
+- Query timeout (8 seconds)
+- Clear instructions for env var setup
+- Link to go to Dashboard if tests pass
+- Table showing actual row counts
 ```
 
-### Step 4: Add Route for Health Check
+### Phase 4: Dashboard Connected to Real Data
+
+**Changes to `src/pages/Dashboard.tsx`:**
 
 ```text
-File: src/App.tsx
-
-Add route: /health -> HealthCheck component (outside PublicRoute wrapper)
+Current: Uses generateFundingRates() and other mock functions
+New:
+1. Keep mock data as fallback
+2. Add useEffect to fetch real data from Supabase:
+   - computed_metrics_v2 table
+   - funding_rates table (fallback)
+   - trading_signals table
+3. Merge real data with mock data (real data first, mock fills gaps)
+4. Show loading skeletons while fetching
+5. Add "Data Source" indicator (Real DB / Mock)
+6. Auto-refresh every 30 seconds
+7. Handle empty tables gracefully ("No data yet")
 ```
 
-### Step 5: Validate Supabase Client Initialization
+### Phase 5: Ensure Routing Does Not Block `/`
+
+**File: `src/App.tsx` routing changes:**
 
 ```text
-File: src/integrations/supabase/client.ts
+Before:
+  <Route path="/" element={<PublicRoute><Landing /></PublicRoute>} />
 
-This file is auto-generated and should NOT be modified.
-The env vars are already correctly configured.
+After:
+  <Route path="/" element={<Landing />} />  // No wrapper - always renders
+
+Keep PublicRoute for /login and /register only.
+```
+
+### Phase 6: Data Shape Tolerance
+
+**Dashboard rendering changes:**
+
+```text
+- Use optional chaining for all data fields
+- Show "N/A" for missing values
+- Generic JSON table fallback if schema differs
+- Never crash on undefined/null
 ```
 
 ---
 
 ## Technical Details
 
-### authStore.ts Changes
+### File: src/App.tsx (Modified)
+
+Key changes:
+1. Add ErrorBoundary class component
+2. Remove PublicRoute from `/` route
+3. Keep `/health` outside auth
+4. Wrap Routes in ErrorBoundary
+
+### File: src/lib/supabaseHelpers.ts (New)
 
 ```typescript
-// Add timeout constant
-const AUTH_INIT_TIMEOUT_MS = 5000;
+import { supabase } from '@/integrations/supabase/client';
 
-// Modify initialize function
-initialize: async () => {
+// Check if env vars are present
+export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+export const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined;
+
+export const supabaseReady = !!(SUPABASE_URL && SUPABASE_KEY);
+
+export function getSupabaseEnvStatus() {
+  return {
+    hasUrl: !!SUPABASE_URL,
+    hasKey: !!SUPABASE_KEY,
+    urlMasked: SUPABASE_URL ? `${SUPABASE_URL.slice(0, 20)}...` : 'NOT SET',
+  };
+}
+
+// Safe query wrapper with timeout
+export async function safeQuery<T>(
+  queryFn: () => Promise<{ data: T | null; error: any }>,
+  timeoutMs = 8000
+): Promise<{ data: T | null; error: string | null; timedOut: boolean }> {
+  if (!supabaseReady) {
+    return { data: null, error: 'Supabase not configured', timedOut: false };
+  }
+  
   try {
-    // Set up timeout to prevent infinite loading
-    const timeoutId = setTimeout(() => {
-      set({ isLoading: false, error: 'Auth initialization timed out' });
-    }, AUTH_INIT_TIMEOUT_MS);
-
-    // Set up auth state listener
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      clearTimeout(timeoutId);
-      // ... existing logic
-    });
-
-    // Get current session
-    const { data: { session }, error } = await supabase.auth.getSession();
-    clearTimeout(timeoutId);
+    const result = await Promise.race([
+      queryFn(),
+      new Promise<never>((_, reject) => 
+        setTimeout(() => reject(new Error('Request timed out')), timeoutMs)
+      ),
+    ]);
     
-    if (error) {
-      set({ isLoading: false, error: error.message });
-      return;
+    if (result.error) {
+      return { data: null, error: result.error.message, timedOut: false };
     }
-    // ... rest of logic
-  } catch (error) {
-    set({ isLoading: false, error: 'Failed to initialize auth' });
+    return { data: result.data, error: null, timedOut: false };
+  } catch (err: any) {
+    const timedOut = err.message === 'Request timed out';
+    return { data: null, error: err.message, timedOut };
   }
 }
 ```
 
-### App.tsx Changes
+### File: src/pages/Index.tsx (Enhanced Health Check)
 
-```typescript
-// Add loading timeout state to LoadingScreen
-function LoadingScreen() {
-  const [showRetry, setShowRetry] = useState(false);
-  
-  useEffect(() => {
-    const timer = setTimeout(() => setShowRetry(true), 3000);
-    return () => clearTimeout(timer);
-  }, []);
+Key changes:
+1. Show Supabase READY/NOT READY status
+2. Multiple test buttons for tables
+3. Show row counts
+4. Clear error display with full details
+5. Timeout handling
+6. Instructions panel
 
-  return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-background gap-4">
-      <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      {showRetry && (
-        <div className="text-center">
-          <p className="text-muted-foreground mb-2">Loading is taking longer than expected...</p>
-          <Button variant="outline" onClick={() => window.location.reload()}>
-            Retry
-          </Button>
-        </div>
-      )}
-    </div>
-  );
-}
+### File: src/pages/Dashboard.tsx (Real Data Integration)
 
-// Add /health route OUTSIDE of PublicRoute wrapper
-<Route path="/health" element={<HealthCheck />} />
-```
-
-### HealthCheck Component (new Index.tsx)
-
-```typescript
-export default function HealthCheck() {
-  const [dbResult, setDbResult] = useState<string | null>(null);
-  const [dbError, setDbError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  
-  const url = import.meta.env.VITE_SUPABASE_URL;
-  const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-
-  const testDatabase = async () => {
-    setIsLoading(true);
-    setDbError(null);
-    setDbResult(null);
-    
-    try {
-      const { data, error } = await supabase
-        .from('computed_metrics_v2')
-        .select('*')
-        .limit(1);
-      
-      if (error) throw error;
-      setDbResult(JSON.stringify(data, null, 2));
-    } catch (err: any) {
-      // Fallback to symbols table
-      try {
-        const { data, error } = await supabase.from('symbols').select('*').limit(1);
-        if (error) throw error;
-        setDbResult(JSON.stringify(data, null, 2));
-      } catch (fallbackErr: any) {
-        setDbError(fallbackErr.message);
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  return (
-    <div className="p-6 max-w-2xl mx-auto">
-      <h1 className="text-2xl font-bold mb-6">System Health Check</h1>
-      
-      {/* Env Status */}
-      <div className="mb-6 p-4 bg-muted rounded-lg font-mono text-sm">
-        <div>VITE_SUPABASE_URL: {url ? "OK" : "MISSING"}</div>
-        <div>VITE_SUPABASE_PUBLISHABLE_KEY: {key ? "OK" : "MISSING"}</div>
-      </div>
-      
-      {/* Test Button */}
-      <Button onClick={testDatabase} disabled={isLoading}>
-        {isLoading ? 'Testing...' : 'Test DB Connection'}
-      </Button>
-      
-      {/* Results */}
-      {dbResult && (
-        <pre className="mt-4 p-4 bg-green-100 rounded-lg overflow-auto text-sm">
-          {dbResult}
-        </pre>
-      )}
-      {dbError && (
-        <pre className="mt-4 p-4 bg-red-100 text-red-700 rounded-lg overflow-auto text-sm">
-          Error: {dbError}
-        </pre>
-      )}
-    </div>
-  );
-}
-```
+Key changes:
+1. Add state for real data: `realMetrics`, `realSignals`
+2. Add `isLoadingRealData` state
+3. useEffect to fetch on mount and every 30s
+4. Merge logic: show real data first, fill with mock
+5. Data source indicator badge
+6. Skeleton loaders during fetch
 
 ---
 
@@ -228,28 +205,32 @@ export default function HealthCheck() {
 
 | File | Action | Description |
 |------|--------|-------------|
-| `src/store/authStore.ts` | Modify | Add timeout, error state, better error handling |
-| `src/App.tsx` | Modify | Add /health route, improve LoadingScreen |
-| `src/pages/Index.tsx` | Replace | Convert to HealthCheck component |
+| `src/App.tsx` | Modify | Add ErrorBoundary, fix routing for `/` |
+| `src/lib/supabaseHelpers.ts` | Create | Safe wrapper with env checks and timeout |
+| `src/pages/Index.tsx` | Modify | Enhanced Health Check with multiple tests |
+| `src/pages/Dashboard.tsx` | Modify | Connect to real Supabase data |
 
 ---
 
-## Verification Steps
+## Verification Steps (60 seconds)
 
-After implementation, verify the fix works:
-
-1. **Navigate to `/`** - Should show Landing page immediately (no spinner)
-2. **Navigate to `/health`** - Should show health check page with env status
-3. **Click "Test DB"** - Should show query result or clear error message
+1. **Open `/`** - Should show Landing page IMMEDIATELY (no spinner)
+2. **Open `/health`** - Should show Health Check with env status (both should be OK)
+3. **Click "Test: symbols"** - Should show JSON with 20 rows
+4. **Click "Test: exchanges"** - Should show JSON with 8 rows
+5. **Open `/dashboard`** (login first) - Should show data (mock with "No real data yet" indicator initially)
 
 ---
 
-## Debug Checklist (If Still Not Working)
+## If Still Failing: Debug Checklist
 
 1. Open browser DevTools (F12) -> Console tab
-2. Look for errors containing "Supabase" or "auth"
-3. Check Network tab for failed requests to `supabase.co`
-4. Navigate to `/health` to check env var status
-5. If env vars show "MISSING" - the build may need a refresh
-6. Click the "Rebuild" button in Lovable editor (top right menu)
-
+2. Look for errors containing "supabase" or "createClient"
+3. Check Network tab -> filter "supabase.co" -> look for 401/403/500 errors
+4. On `/health`, verify both env vars show "OK"
+5. If env vars show "MISSING":
+   - Check `.env` file exists in project root
+   - Values should NOT have quotes around them
+   - Hard refresh (Ctrl+Shift+R)
+   - Click "Rebuild" in Lovable editor
+6. Check if RLS policies might be blocking queries (profiles table, etc.)
