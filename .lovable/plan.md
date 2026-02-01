@@ -1,46 +1,49 @@
 
-# Plan: Ukloni Watermark + Dupliraj Logo u Header-u
+# Plan: Povećaj Logo i Natpis u Header-u
 
 ## Pregled
-Uklanjanje watermark elementa iz pozadine i dupliranje Diadonum logoa sa ikonom u header-u (vrh stranice).
+Uklanjanje duplog logoa i povećanje jednog logoa sa natpisom "Diadonum" u header-u.
 
 ---
 
 ## Promene
 
-### 1. Ukloniti Watermark (linije 221-231)
-Brisanje celog bloka sa watermark logom u pozadini:
+### Trenutno stanje (linije 224-241)
+Duplirani logo elementi:
 ```tsx
-// OBRISATI OVAJ BLOK:
-{/* Watermark Logo */}
-<div className="fixed inset-0 pointer-events-none z-0 ...">
-  ...
-</div>
-```
-
-### 2. Duplirati Logo u Header-u
-Trenutni header ima jedan logo + tekst. Dupliraćemo ga tako da bude:
-- Logo + "Diadonum" + Logo + "Diadonum"
-
-```tsx
-// TRENUTNO (linije 235-242):
-<div className="flex items-center gap-2">
-  <img src="/favicon.jpg" alt="Diadonum" className="h-9 w-9 rounded-lg object-cover"/>
-  <span className="text-lg font-bold hidden sm:inline">Diadonum</span>
-</div>
-
-// NOVO:
 <div className="flex items-center gap-4">
   <div className="flex items-center gap-2">
-    <img src="/favicon.jpg" alt="Diadonum" className="h-9 w-9 rounded-lg object-cover"/>
-    <span className="text-lg font-bold hidden sm:inline">Diadonum</span>
+    <img className="h-9 w-9 rounded-lg object-cover"/>
+    <span className="text-lg font-bold">Diadonum</span>
   </div>
   <div className="flex items-center gap-2">
-    <img src="/favicon.jpg" alt="Diadonum" className="h-9 w-9 rounded-lg object-cover"/>
-    <span className="text-lg font-bold hidden sm:inline">Diadonum</span>
+    <img className="h-9 w-9 rounded-lg object-cover"/>
+    <span className="text-lg font-bold">Diadonum</span>
   </div>
 </div>
 ```
+
+### Novo stanje
+Jedan veći logo i veći tekst:
+```tsx
+<div className="flex items-center gap-3">
+  <img 
+    src="/favicon.jpg" 
+    alt="Diadonum" 
+    className="h-12 w-12 rounded-lg object-cover"
+  />
+  <span className="text-2xl font-bold hidden sm:inline">Diadonum</span>
+</div>
+```
+
+---
+
+## Veličine
+
+| Element | Bilo | Biće |
+|---------|------|------|
+| Logo slika | h-9 w-9 (36px) | h-12 w-12 (48px) |
+| Tekst | text-lg (~18px) | text-2xl (~24px) |
 
 ---
 
@@ -48,10 +51,12 @@ Trenutni header ima jedan logo + tekst. Dupliraćemo ga tako da bude:
 
 ```text
 BILO:
-[Logo] Diadonum                    [Live Data] [Refresh] [User]
+[Logo 36px] Diadonum  [Logo 36px] Diadonum   [controls...]
 
 BIĆE:
-[Logo] Diadonum  [Logo] Diadonum   [Live Data] [Refresh] [User]
+[Logo 48px] DIADONUM                          [controls...]
+     ↑          ↑
+   veći      veći tekst
 ```
 
 ---
@@ -60,4 +65,4 @@ BIĆE:
 
 | Fajl | Izmena |
 |------|--------|
-| `src/pages/Dashboard.tsx` | Obrisati watermark (linije 221-231), duplirati logo u header-u (linije 235-242) |
+| `src/pages/Dashboard.tsx` | Zameniti dupli logo jednim većim (linije 224-241) |
