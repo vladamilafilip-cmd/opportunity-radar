@@ -118,6 +118,7 @@ export default function Dashboard() {
             *,
             symbols:symbol_id (display_name)
           `)
+          .eq("status", "open")
           .order("created_at", { ascending: false })
           .limit(20),
       ]);
@@ -188,8 +189,19 @@ export default function Dashboard() {
   // Risk tier priority for sorting (safe = 0, medium = 1, high = 2)
   const riskPriority = (tier: string) => tier === 'safe' ? 0 : tier === 'medium' ? 1 : 2;
 
-  const displaySignals = realSignals.length > 0
-    ? realSignals.map((sig: any) => ({
+  // De-duplicate signals by symbol + long_exchange + short_exchange (keep most recent)
+  const deduplicatedSignals = (() => {
+    const seen = new Set<string>();
+    return realSignals.filter((sig: any) => {
+      const key = `${sig.symbol_id}-${sig.long_exchange}-${sig.short_exchange}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  })();
+
+  const displaySignals = deduplicatedSignals.length > 0
+    ? deduplicatedSignals.map((sig: any) => ({
         id: sig.id,
         symbol: sig.symbols?.display_name || 'Unknown',
         type: sig.signal_type || 'funding_arbitrage',

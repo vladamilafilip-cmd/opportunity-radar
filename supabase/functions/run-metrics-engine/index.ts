@@ -639,16 +639,21 @@ async function runMetricsEngine(supabase: SupabaseClient): Promise<{
         }
 
         if (signals.length > 0) {
-          const oppIds = signals.map(s => s.opportunity_id);
-          await supabase
-            .from('trading_signals')
-            .update({ 
-              status: 'closed', 
-              closed_at: new Date().toISOString(),
-              closed_reason: 'superseded'
-            } as any)
-            .in('opportunity_id', oppIds)
-            .eq('status', 'open');
+          // Close any existing open signals for the same symbol + exchange pair
+          // This prevents duplicates even across different opportunity_ids
+          for (const signal of signals) {
+            await supabase
+              .from('trading_signals')
+              .update({ 
+                status: 'closed', 
+                closed_at: new Date().toISOString(),
+                closed_reason: 'superseded'
+              } as any)
+              .eq('symbol_id', signal.symbol_id)
+              .eq('long_exchange', signal.long_exchange)
+              .eq('short_exchange', signal.short_exchange)
+              .eq('status', 'open');
+          }
 
           const { error: signalsError } = await supabase
             .from('trading_signals')
