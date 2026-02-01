@@ -20,6 +20,14 @@ import {
 } from "@/lib/mockData";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Slider } from "@/components/ui/slider";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { 
   Radar, 
   TrendingUp, 
@@ -33,7 +41,8 @@ import {
   Star,
   Database,
   AlertCircle,
-  Calculator
+  Calculator,
+  AlertTriangle
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -53,11 +62,24 @@ export default function Dashboard() {
   const [dataSource, setDataSource] = useState<DataSource>("mock");
   const [isLoadingRealData, setIsLoadingRealData] = useState(true);
   const [investmentAmount, setInvestmentAmount] = useState<number>(10000);
+  const [selectedPeriod, setSelectedPeriod] = useState<string>("8h");
+  const [leverage, setLeverage] = useState<number>(1);
+
+  // Period multiplier for profit projection
+  const getPeriodMultiplier = (period: string): number => {
+    switch (period) {
+      case "1D": return 3;    // 3 funding intervals per day
+      case "7D": return 21;   // Weekly projection
+      case "30D": return 90;  // Monthly projection
+      default: return 1;     // 8h base
+    }
+  };
 
   // Helper function to format profit in absolute numbers
   const formatProfitAbsolute = (percent: number): string => {
     if (!Number.isFinite(percent)) return "$0.00";
-    const profit = investmentAmount * percent;
+    const periodMultiplier = getPeriodMultiplier(selectedPeriod);
+    const profit = investmentAmount * percent * periodMultiplier * leverage;
     return profit >= 0 
       ? `+$${profit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
       : `-$${Math.abs(profit).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -294,7 +316,8 @@ export default function Dashboard() {
               Kalkulator profita
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
+            {/* Row 1: Investment + Period */}
             <div className="flex flex-wrap items-center gap-4">
               <Label htmlFor="investment" className="text-sm font-medium">Uložena suma:</Label>
               <div className="relative">
@@ -308,10 +331,49 @@ export default function Dashboard() {
                   min={0}
                 />
               </div>
-              <span className="text-sm text-muted-foreground">
-                Unesi sumu za prikaz procijenjenog profita u USD
-              </span>
+              
+              <Label htmlFor="period" className="text-sm font-medium ml-4">Period:</Label>
+              <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
+                <SelectTrigger className="w-32">
+                  <SelectValue placeholder="Period" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="8h">8h (1 interval)</SelectItem>
+                  <SelectItem value="1D">1 dan (3x)</SelectItem>
+                  <SelectItem value="7D">7 dana (21x)</SelectItem>
+                  <SelectItem value="30D">30 dana (90x)</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
+
+            {/* Row 2: Leverage Slider */}
+            <div className="flex flex-wrap items-center gap-4">
+              <Label className="text-sm font-medium min-w-[80px]">Leverage:</Label>
+              <span className="text-sm text-muted-foreground w-8">1x</span>
+              <Slider
+                value={[leverage]}
+                onValueChange={(value) => setLeverage(value[0])}
+                min={1}
+                max={10}
+                step={1}
+                className="w-48"
+              />
+              <span className="text-sm text-muted-foreground w-10">10x</span>
+              <Badge variant={leverage > 5 ? "destructive" : "secondary"} className="ml-2">
+                {leverage}x
+              </Badge>
+              
+              {leverage > 5 && (
+                <div className="flex items-center gap-1 text-amber-500 text-sm">
+                  <AlertTriangle className="h-4 w-4" />
+                  Visok leverage povećava rizik likvidacije
+                </div>
+              )}
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              Procjena profita: ${investmentAmount.toLocaleString()} × {getPeriodMultiplier(selectedPeriod)}x period × {leverage}x leverage
+            </p>
           </CardContent>
         </Card>
         
