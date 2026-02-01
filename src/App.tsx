@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -14,16 +14,39 @@ import Trading from "./pages/Trading";
 import Billing from "./pages/Billing";
 import Admin from "./pages/Admin";
 import Settings from "./pages/Settings";
+import HealthCheck from "./pages/Index";
 import NotFound from "./pages/NotFound";
+import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
 
 const queryClient = new QueryClient();
 
-// Loading spinner component
+// Loading spinner component with timeout fallback
 function LoadingScreen() {
+  const [showRetry, setShowRetry] = useState(false);
+  const { error } = useAuthStore();
+
+  useEffect(() => {
+    const timer = setTimeout(() => setShowRetry(true), 3000);
+    return () => clearTimeout(timer);
+  }, []);
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-background gap-4">
       <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      {error && (
+        <p className="text-destructive text-sm">{error}</p>
+      )}
+      {showRetry && (
+        <div className="text-center">
+          <p className="text-muted-foreground mb-2 text-sm">
+            Loading is taking longer than expected...
+          </p>
+          <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
+            Retry
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -97,6 +120,9 @@ const App = () => (
       <BrowserRouter>
         <AuthInitializer>
           <Routes>
+            {/* Health check - outside auth wrappers for debugging */}
+            <Route path="/health" element={<HealthCheck />} />
+            
             {/* Public routes */}
             <Route path="/" element={<PublicRoute><Landing /></PublicRoute>} />
             <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
