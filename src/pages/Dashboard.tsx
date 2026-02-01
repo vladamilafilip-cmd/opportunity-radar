@@ -221,23 +221,13 @@ export default function Dashboard() {
       {/* Header */}
       <header className="border-b border-border/50 sticky top-0 bg-background/95 backdrop-blur z-50">
         <div className="container mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <img 
-                src="/favicon.jpg" 
-                alt="Diadonum" 
-                className="h-9 w-9 rounded-lg object-cover"
-              />
-              <span className="text-lg font-bold hidden sm:inline">Diadonum</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <img 
-                src="/favicon.jpg" 
-                alt="Diadonum" 
-                className="h-9 w-9 rounded-lg object-cover"
-              />
-              <span className="text-lg font-bold hidden sm:inline">Diadonum</span>
-            </div>
+          <div className="flex items-center gap-3">
+            <img 
+              src="/favicon.jpg" 
+              alt="Diadonum" 
+              className="h-12 w-12 rounded-lg object-cover"
+            />
+            <span className="text-2xl font-bold hidden sm:inline">Diadonum</span>
           </div>
           
           <div className="flex items-center gap-2">
