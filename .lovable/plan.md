@@ -1,83 +1,121 @@
-# Plan: IQ200 Tier-Based Scaling System (20 Berzi × 100 Parova)
 
-## ✅ IMPLEMENTATION STATUS
+# Plan: Period Selector + Leverage Slider
 
-### Completed Phases
+## Overview
+Adding two professional trading tools to the Dashboard profit calculator:
+1. **Period Selector** - Dropdown to choose timeframe (8h, 1D, 7D, 30D) for annualized profit projections
+2. **Leverage Slider** - Interactive slider (1x-10x) showing amplified profits and liquidation warnings
 
-| Faza | Opis | Status |
-|------|------|--------|
-| **1** | DB migracija (tier columns + schedule tabela) | ✅ DONE |
-| **2** | Populirati 100 simbola sa tier vrijednostima | ✅ DONE |
-| **3** | Dodati 8 novih berzi (OKX, Bitget, Gate, KuCoin, HTX, MEXC, Kraken, Deribit) | ✅ DONE |
-| **4** | Implementirati tier-based ingestion scheduler | ✅ DONE |
-| **5** | Dodati API fetchere za sve berze (batch endpoints) | ✅ DONE |
-| **6** | Liquidity pre-filtering u ingestion | ✅ DONE |
-| **7** | Circuit breaker sa exponential backoff | ✅ DONE |
+---
 
-### Remaining Work
+## Current State Analysis
 
-| Faza | Opis | Status |
-|------|------|--------|
-| **8** | Update metrics engine sa hub-spoke arbitrage | TODO |
-| **9** | Dodati 10 Extended tier berzi | TODO |
-| **10** | Monitoring dashboard | TODO |
+The Dashboard (`src/pages/Dashboard.tsx`) already has:
+- Investment amount input ($10,000 default)
+- `formatProfitAbsolute()` function calculating profit from percentage
+- Tables displaying Est. Profit ($) based on investment
 
-## Current System State
+The profit calculation currently uses raw percentages without period scaling or leverage.
 
-| Metrika | Vrijednost |
-|---------|------------|
-| Aktivne berze | 10 |
-| Aktivni simboli | 100 |
-| Aktivni marketi | 475 |
-| Schedule zapisi | 29 |
-| Zadnji test: funding rates | 267 |
-| Zadnji test: prices | 332 |
+---
 
-## Tier Arhitektura
+## Implementation Details
 
-### Symbol Tiers
+### 1. New State Variables
 
-| Tier | Kategorija | Parova | Primjeri | Refresh Interval |
-|------|------------|--------|----------|------------------|
-| **T1** | Majors | 10 | BTC, ETH, SOL, BNB, XRP | 1 min |
-| **T2** | Top Altcoins | 25 | ARB, OP, LINK, AVAX, DOT | 3 min |
-| **T3** | Mid Altcoins | 30 | SUI, APT, INJ, SEI, TIA | 5 min |
-| **T4** | Meme/High Risk | 35 | PEPE, WIF, DOGE, SHIB, BONK | 10 min |
+```typescript
+// Add to Dashboard component state
+const [selectedPeriod, setSelectedPeriod] = useState<string>("8h");
+const [leverage, setLeverage] = useState<number>(1);
+```
 
-### Exchange Tiers
+### 2. Period Multiplier Logic
 
-| Tier | Berze | Simboli |
-|------|-------|---------|
-| **Primary** | Binance, Bybit, OKX | Svi (T1-T4) |
-| **Secondary** | Bitget, Gate, KuCoin | T1-T3 |
-| **Tertiary** | HTX, MEXC, Kraken, Deribit | T1-T2 |
+| Period | Multiplier | Description |
+|--------|-----------|-------------|
+| 8h     | 1x        | Single funding interval (base) |
+| 1D     | 3x        | 3 funding intervals per day |
+| 7D     | 21x       | Weekly projection |
+| 30D    | 90x       | Monthly projection |
 
-## Key Features Implemented
+### 3. Updated Profit Calculation
 
-1. **Batch API Calls**: 1 poziv po berzi = svi parovi
-2. **Tier-Based Scheduling**: Različiti refresh intervali po tier kombinaciji
-3. **Circuit Breaker**: Exponential backoff (5min → 15min → 30min → disable)
-4. **Liquidity Pre-filtering**: Skip ako volume < $1M ili spread > 50bps
-5. **10 Exchange Fetchers**: Binance, Bybit, OKX, Bitget, Gate, KuCoin, HTX, MEXC, Kraken, Deribit
+```typescript
+const getPeriodMultiplier = (period: string) => {
+  switch (period) {
+    case "1D": return 3;
+    case "7D": return 21;
+    case "30D": return 90;
+    default: return 1; // 8h base
+  }
+};
 
-## Files Modified/Added
+const formatProfitAbsolute = (percent: number): string => {
+  if (!Number.isFinite(percent)) return "$0.00";
+  const periodMultiplier = getPeriodMultiplier(selectedPeriod);
+  const profit = investmentAmount * percent * periodMultiplier * leverage;
+  // ... format as before
+};
+```
 
-### Edge Functions
-- `supabase/functions/ingest-exchange-data/index.ts` - Refaktorisan main engine
-- `supabase/functions/ingest-exchange-data/exchangeFetchers.ts` - 10 batch fetcher-a
-- `supabase/functions/ingest-exchange-data/scheduler.ts` - Tier scheduling logika
+### 4. UI Components
 
-### Database Changes
-- `symbols`: +symbol_tier, +volatility_multiplier, +is_meme
-- `exchanges`: +exchange_tier, +rate_limit_per_min, +batch_endpoint, +funding_interval_hours
-- Nova tabela: `ingestion_schedule`
-- engine_config: tier_intervals, exchange_tiers, liquidity_filters, hub_exchanges
+#### Period Selector (Dropdown)
+- Position: Next to investment input in calculator card
+- Uses existing `Select` component from shadcn/ui
+- Options: 8h, 1D, 7D, 30D with labels
 
-## Expected Results
+#### Leverage Slider
+- Position: Below period selector in same card
+- Uses existing `Slider` component from shadcn/ui
+- Range: 1x to 10x (step: 1)
+- Visual display: Current value + profit preview
+- Warning badge when leverage > 5x
 
-| Metrika | Prije | Poslije |
-|---------|-------|---------|
-| Arbitrage prilika/h | ~5-10 | ~50-100 |
-| Shitcoin coverage | 3 | 35 |
-| API ban rizik | 0% | 0% |
-| Compute cost | $X | ~$0.23X |
+### 5. Risk Warning Display
+
+```typescript
+// When leverage > 5x, show warning
+{leverage > 5 && (
+  <div className="text-amber-500 text-sm flex items-center gap-1">
+    <AlertTriangle className="h-4 w-4" />
+    High leverage increases liquidation risk
+  </div>
+)}
+```
+
+---
+
+## Visual Layout
+
+```text
++----------------------------------------------------------+
+|  Kalkulator profita                                       |
++----------------------------------------------------------+
+|  Uložena suma: [$ 10,000]    Period: [8h ▼]              |
+|                                                           |
+|  Leverage: 1x  ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━  10x        |
+|            Current: 3x                                    |
+|                                                           |
+|  ⚠️ High leverage increases liquidation risk (if >5x)    |
++----------------------------------------------------------+
+```
+
+---
+
+## Files to Modify
+
+| File | Changes |
+|------|---------|
+| `src/pages/Dashboard.tsx` | Add state, period logic, leverage slider, update calculator UI |
+
+No new files needed - all components already exist in the project.
+
+---
+
+## Technical Notes
+
+- **Period selector**: Uses funding rate intervals (8h standard). Daily = 3x, Weekly = 21x, Monthly = 90x
+- **Leverage slider**: Pure UI multiplier for visualization. Does not affect actual trading
+- **All existing table columns** will automatically use new multipliers via the shared `formatProfitAbsolute` function
+- **Mobile responsive**: Uses flex-wrap for proper stacking on small screens
