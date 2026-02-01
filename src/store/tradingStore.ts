@@ -111,7 +111,7 @@ export const useTradingStore = create<TradingStore>()(
       },
     }),
     {
-      name: 'iq200-trading',
+      name: 'diadonum-trading',
     }
   )
 );
