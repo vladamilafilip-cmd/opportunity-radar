@@ -141,11 +141,12 @@ export default function Dashboard() {
         exchange: fr.exchanges?.name || fr.exchanges?.code || 'Unknown',
         symbol: fr.symbols?.display_name || 'Unknown',
         fundingRate: (fr.funding_rate_8h || 0) * 100, // Convert to percentage
-        nextFundingTime: new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(), // 8h from now
+        spreadBps: fr.spread_bps ?? 0,
+        totalCostBps: fr.total_cost_bps ?? 0,
+        liquidityScore: fr.liquidity_score ?? 0,
+        markPrice: fr.mark_price ?? 0,
+        volume24h: fr.volume_24h ?? 0,
         riskTier: Math.abs(fr.funding_rate_8h || 0) > 0.001 ? 'high' : Math.abs(fr.funding_rate_8h || 0) > 0.0003 ? 'medium' : 'safe' as const,
-        markPrice: fr.mark_price || 0,
-        volume24h: fr.volume_24h || 0,
-        liquidityScore: fr.liquidity_score || 0,
       }))
     : mockFundingRates;
 
@@ -305,20 +306,24 @@ export default function Dashboard() {
                           <TableHead>Exchange</TableHead>
                           <TableHead>Symbol</TableHead>
                           <TableHead className="text-right">Funding Rate</TableHead>
-                          <TableHead>Next Funding</TableHead>
+                          <TableHead className="text-right">Spread (bps)</TableHead>
+                          <TableHead className="text-right">Cost (bps)</TableHead>
                           <TableHead>Risk</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {displayFundingRates.slice(0, 20).map((rate: any, idx: number) => (
                           <TableRow key={`${rate.exchange}-${rate.symbol}-${idx}`}>
-                            <TableCell className="font-medium">{rate.exchange || 'N/A'}</TableCell>
-                            <TableCell>{rate.symbol || 'N/A'}</TableCell>
+                            <TableCell className="font-medium">{rate.exchange || 'Unknown'}</TableCell>
+                            <TableCell>{rate.symbol || 'Unknown'}</TableCell>
                             <TableCell className={`text-right font-mono ${Number.isFinite(rate.fundingRate) && rate.fundingRate >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                              {Number.isFinite(rate.fundingRate) ? `${rate.fundingRate >= 0 ? '+' : ''}${(rate.fundingRate * 100).toFixed(4)}%` : 'N/A'}
+                              {Number.isFinite(rate.fundingRate) ? `${rate.fundingRate >= 0 ? '+' : ''}${(rate.fundingRate * 100).toFixed(4)}%` : '0.0000%'}
                             </TableCell>
-                            <TableCell className="text-muted-foreground">
-                              {rate.nextFundingTime ? new Date(rate.nextFundingTime).toLocaleTimeString() : 'N/A'}
+                            <TableCell className="text-right font-mono">
+                              {Number.isFinite(rate.spreadBps) ? rate.spreadBps.toFixed(1) : '0.0'}
+                            </TableCell>
+                            <TableCell className="text-right font-mono text-muted-foreground">
+                              {Number.isFinite(rate.totalCostBps) ? rate.totalCostBps.toFixed(1) : '0.0'}
                             </TableCell>
                             <TableCell>
                               <RiskBadge tier={rate.riskTier || 'medium'} />
