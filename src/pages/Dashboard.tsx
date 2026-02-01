@@ -252,19 +252,6 @@ export default function Dashboard() {
         <UserDataBanner />
         <DisclaimerBanner />
         
-        {/* No Real Data Warning */}
-        {dataSource === "mock" && !isLoadingRealData && (
-          <div className="mb-6 p-4 bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-800 rounded-lg flex items-start gap-3">
-            <AlertCircle className="h-5 w-5 text-yellow-600 dark:text-yellow-400 shrink-0 mt-0.5" />
-            <div>
-              <p className="font-medium text-yellow-800 dark:text-yellow-200">Using Mock Data</p>
-              <p className="text-sm text-yellow-700 dark:text-yellow-300">
-                No live data found in database. Displaying mock data for demonstration.
-                Visit <Link to="/" className="underline font-medium">Health Check</Link> to verify database connectivity.
-              </p>
-            </div>
-          </div>
-        )}
         
         <Tabs defaultValue="funding" className="mt-6">
           <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-grid">
