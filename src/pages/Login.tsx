@@ -18,9 +18,18 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    const success = await login(email, password);
+    if (!email.trim() || !password) {
+      toast({
+        title: "Missing fields",
+        description: "Please enter both email and password.",
+        variant: "destructive",
+      });
+      return;
+    }
     
-    if (success) {
+    const result = await login(email, password);
+    
+    if (result.success) {
       toast({
         title: "Welcome back!",
         description: "You have successfully logged in.",
@@ -29,7 +38,7 @@ export default function LoginPage() {
     } else {
       toast({
         title: "Login failed",
-        description: "Invalid email or password. Try demo@iq200.com / demo123",
+        description: result.error || "Invalid email or password.",
         variant: "destructive",
       });
     }
@@ -56,10 +65,11 @@ export default function LoginPage() {
               <Input
                 id="email"
                 type="email"
-                placeholder="demo@iq200.com"
+                placeholder="you@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
+                autoComplete="email"
               />
             </div>
             <div className="space-y-2">
@@ -67,20 +77,13 @@ export default function LoginPage() {
               <Input
                 id="password"
                 type="password"
-                placeholder="demo123"
+                placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                autoComplete="current-password"
+                minLength={6}
               />
-            </div>
-            
-            <div className="bg-muted/50 rounded-lg p-3 text-sm">
-              <p className="font-medium mb-2">Demo Accounts:</p>
-              <ul className="space-y-1 text-muted-foreground">
-                <li>• demo@iq200.com / demo123 (PRO)</li>
-                <li>• free@iq200.com / free123 (FREE)</li>
-                <li>• admin@iq200.com / admin123 (ADMIN)</li>
-              </ul>
             </div>
           </CardContent>
           <CardFooter className="flex flex-col gap-4">

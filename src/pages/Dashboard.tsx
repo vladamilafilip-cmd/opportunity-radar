@@ -63,9 +63,9 @@ export default function Dashboard() {
     navigate("/");
   };
 
-  // Auto refresh every 60 seconds for PRO+
+  // Auto refresh every 60 seconds for elite/team plans
   useEffect(() => {
-    if (user?.plan === 'pro_plus' || user?.plan === 'full') {
+    if (user?.plan === 'elite' || user?.plan === 'team') {
       const interval = setInterval(handleRefresh, 60000);
       return () => clearInterval(interval);
     }
