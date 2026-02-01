@@ -392,12 +392,23 @@ async function runMetricsEngine(supabase: SupabaseClient): Promise<{
     // ========================================
     // STEP 4: Find cross-exchange arbitrage opportunities
     // ========================================
+    // Group metrics by symbol for cross-exchange comparison
     const symbolMetrics = new Map<string, ComputedMetric[]>();
     for (const metric of computedMetrics) {
       if (!symbolMetrics.has(metric.symbol_id)) {
         symbolMetrics.set(metric.symbol_id, []);
       }
       symbolMetrics.get(metric.symbol_id)!.push(metric);
+    }
+
+    console.log(`[Engine] Found ${symbolMetrics.size} symbols with metrics`);
+    
+    // Log symbols with multiple exchanges for debugging
+    for (const [symbolId, metrics] of symbolMetrics) {
+      if (metrics.length >= 2) {
+        console.log(`[Engine] Symbol ${symbolId} has ${metrics.length} exchanges:`, 
+          metrics.map(m => `${marketDataMap.get(m.market_id)?.exchange_code}:${m.funding_rate_8h.toFixed(6)}`).join(', '));
+      }
     }
 
     const opportunities: ArbitrageOpportunity[] = [];
