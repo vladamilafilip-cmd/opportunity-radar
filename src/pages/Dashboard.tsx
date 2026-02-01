@@ -313,13 +313,13 @@ export default function Dashboard() {
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-lg">
               <Calculator className="h-5 w-5 text-primary" />
-              Kalkulator profita
+              Profit Calculator
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             {/* Row 1: Investment + Period */}
             <div className="flex flex-wrap items-center gap-4">
-              <Label htmlFor="investment" className="text-sm font-medium">Uložena suma:</Label>
+              <Label htmlFor="investment" className="text-sm font-medium">Investment Amount:</Label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
                 <Input
@@ -339,9 +339,9 @@ export default function Dashboard() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="8h">8h (1 interval)</SelectItem>
-                  <SelectItem value="1D">1 dan (3x)</SelectItem>
-                  <SelectItem value="7D">7 dana (21x)</SelectItem>
-                  <SelectItem value="30D">30 dana (90x)</SelectItem>
+                  <SelectItem value="1D">1 day (3x)</SelectItem>
+                  <SelectItem value="7D">7 days (21x)</SelectItem>
+                  <SelectItem value="30D">30 days (90x)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -366,13 +366,13 @@ export default function Dashboard() {
               {leverage > 5 && (
                 <div className="flex items-center gap-1 text-amber-500 text-sm">
                   <AlertTriangle className="h-4 w-4" />
-                  Visok leverage povećava rizik likvidacije
+                  High leverage increases liquidation risk
                 </div>
               )}
             </div>
 
             <p className="text-xs text-muted-foreground">
-              Procjena profita: ${investmentAmount.toLocaleString()} × {getPeriodMultiplier(selectedPeriod)}x period × {leverage}x leverage
+              Profit Estimate: ${investmentAmount.toLocaleString()} × {getPeriodMultiplier(selectedPeriod)}x period × {leverage}x leverage
             </p>
           </CardContent>
         </Card>

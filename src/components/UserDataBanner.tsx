@@ -22,9 +22,9 @@ export function UserDataBanner() {
     return (
       <Alert className="mb-4 border-primary/50 bg-primary/5">
         <Loader2 className="h-4 w-4 animate-spin" />
-        <AlertTitle>Učitavanje profila...</AlertTitle>
+        <AlertTitle>Loading profile...</AlertTitle>
         <AlertDescription>
-          Vaš nalog se inicijalizuje. Molimo sačekajte.
+          Your account is being initialized. Please wait.
         </AlertDescription>
       </Alert>
     );
@@ -35,11 +35,11 @@ export function UserDataBanner() {
     return (
       <Alert className="mb-4 border-destructive/50 bg-destructive/5">
         <AlertTriangle className="h-4 w-4" />
-        <AlertTitle>Problem sa učitavanjem profila</AlertTitle>
+        <AlertTitle>Problem loading profile</AlertTitle>
         <AlertDescription className="flex flex-col gap-2">
           <span>
-            Prijava je uspešna, ali podaci o profilu nisu dostupni. 
-            Možete nastaviti sa korišćenjem aplikacije ili pokušati ponovo.
+            Login successful, but profile data is not available. 
+            You can continue using the application or try again.
           </span>
           <Button 
             variant="outline" 
@@ -48,7 +48,7 @@ export function UserDataBanner() {
             className="w-fit"
           >
             <RefreshCw className="h-3 w-3 mr-1" />
-            Pokušaj ponovo
+            Try again
           </Button>
         </AlertDescription>
       </Alert>
