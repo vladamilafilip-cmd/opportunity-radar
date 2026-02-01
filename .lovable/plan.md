@@ -1,121 +1,92 @@
 
-# Plan: Period Selector + Leverage Slider
+# Plan: Watermark Logo + Favicon Usklađivanje
 
-## Overview
-Adding two professional trading tools to the Dashboard profit calculator:
-1. **Period Selector** - Dropdown to choose timeframe (8h, 1D, 7D, 30D) for annualized profit projections
-2. **Leverage Slider** - Interactive slider (1x-10x) showing amplified profits and liquidation warnings
+## Pregled
+Dodavanje Diadonum logoa kao suptilan watermark u pozadinu Dashboard stranice, plus ažuriranje favicon elemenata da budu konzistentni sa favicon.jpg stilom.
 
 ---
 
-## Current State Analysis
+## Deo 1: Watermark Logo u Pozadini
 
-The Dashboard (`src/pages/Dashboard.tsx`) already has:
-- Investment amount input ($10,000 default)
-- `formatProfitAbsolute()` function calculating profit from percentage
-- Tables displaying Est. Profit ($) based on investment
+### Gde se dodaje
+Pozadina glavnog sadržaja Dashboard-a (ispod svih ostalih elemenata)
 
-The profit calculation currently uses raw percentages without period scaling or leverage.
+### Vizuelni stil
+- Veliki logo (otprilike 300-400px)
+- Vrlo niska prozirnost (5-10%) da bude suptilan
+- Fiksiran u centru ili donjem desnom uglu
+- Ne ometa čitljivost sadržaja
+- Uključuje favicon.jpg i tekst "Diadonum"
 
----
+### Tehnicka implementacija
 
-## Implementation Details
-
-### 1. New State Variables
-
-```typescript
-// Add to Dashboard component state
-const [selectedPeriod, setSelectedPeriod] = useState<string>("8h");
-const [leverage, setLeverage] = useState<number>(1);
-```
-
-### 2. Period Multiplier Logic
-
-| Period | Multiplier | Description |
-|--------|-----------|-------------|
-| 8h     | 1x        | Single funding interval (base) |
-| 1D     | 3x        | 3 funding intervals per day |
-| 7D     | 21x       | Weekly projection |
-| 30D    | 90x       | Monthly projection |
-
-### 3. Updated Profit Calculation
-
-```typescript
-const getPeriodMultiplier = (period: string) => {
-  switch (period) {
-    case "1D": return 3;
-    case "7D": return 21;
-    case "30D": return 90;
-    default: return 1; // 8h base
-  }
-};
-
-const formatProfitAbsolute = (percent: number): string => {
-  if (!Number.isFinite(percent)) return "$0.00";
-  const periodMultiplier = getPeriodMultiplier(selectedPeriod);
-  const profit = investmentAmount * percent * periodMultiplier * leverage;
-  // ... format as before
-};
-```
-
-### 4. UI Components
-
-#### Period Selector (Dropdown)
-- Position: Next to investment input in calculator card
-- Uses existing `Select` component from shadcn/ui
-- Options: 8h, 1D, 7D, 30D with labels
-
-#### Leverage Slider
-- Position: Below period selector in same card
-- Uses existing `Slider` component from shadcn/ui
-- Range: 1x to 10x (step: 1)
-- Visual display: Current value + profit preview
-- Warning badge when leverage > 5x
-
-### 5. Risk Warning Display
-
-```typescript
-// When leverage > 5x, show warning
-{leverage > 5 && (
-  <div className="text-amber-500 text-sm flex items-center gap-1">
-    <AlertTriangle className="h-4 w-4" />
-    High leverage increases liquidation risk
+```tsx
+// Dodati u Dashboard.tsx kao pozadinski element
+<div className="fixed inset-0 pointer-events-none z-0 flex items-center justify-center overflow-hidden">
+  <div className="opacity-[0.05] flex flex-col items-center gap-4">
+    <img 
+      src="/favicon.jpg" 
+      alt="" 
+      className="w-64 h-64 rounded-3xl object-cover"
+    />
+    <span className="text-6xl font-bold tracking-wider">DIADONUM</span>
   </div>
-)}
+</div>
 ```
 
 ---
 
-## Visual Layout
+## Deo 2: Favicon Konzistentnost
+
+### Trenutno stanje
+- `public/favicon.jpg` - glavni logo (koristi se)
+- `public/favicon.ico` - stari format
+- `public/icons/icon-512.svg` - SVG ikona sa drugačijim dizajnom (krugovi + linija)
+- `index.html` - referencira `/favicon.jpg`
+
+### Promene
+1. **index.html** - već koristi favicon.jpg, ostaje isto
+2. **manifest.json** - ažurirati da koristi favicon.jpg umesto PNG ikona (ili ostaviti jer PWA radi)
+3. **Opciono**: Generisati PNG ikone od favicon.jpg za PWA (72, 96, 128, 144, 152, 192, 384, 512px)
+
+### Preporuka
+Posto favicon.jpg već funkcioniše i koristi se, predlažem da manifest.json ažuriramo da koristi favicon.jpg direktno umesto nepostojećih PNG fajlova.
+
+---
+
+## Fajlovi za izmenu
+
+| Fajl | Izmena |
+|------|--------|
+| `src/pages/Dashboard.tsx` | Dodati watermark element u pozadini |
+| `public/manifest.json` | Opciono: ažurirati ikone da koriste favicon.jpg |
+
+---
+
+## Vizualni prikaz
 
 ```text
 +----------------------------------------------------------+
-|  Kalkulator profita                                       |
+|  [Logo] Diadonum           [Live Data] [Refresh] [User]  |
 +----------------------------------------------------------+
-|  Uložena suma: [$ 10,000]    Period: [8h ▼]              |
 |                                                           |
-|  Leverage: 1x  ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━  10x        |
-|            Current: 3x                                    |
+|  Risk Disclaimer banner (plava boja)                     |
 |                                                           |
-|  ⚠️ High leverage increases liquidation risk (if >5x)    |
+|  +-- Kalkulator profita --+                              |
+|  |  ...                    |     ╭─────────────╮         |
+|  +-------------------------+     │             │         |
+|                                  │  [favicon]  │ ← 5%    |
+|  [Tabs: Funding | Arb | ...]     │             │  opacity|
+|                                  │  DIADONUM   │         |
+|  Tabele sa podacima...           │             │         |
+|                                  ╰─────────────╯         |
 +----------------------------------------------------------+
 ```
 
 ---
 
-## Files to Modify
+## Tehnička napomena
 
-| File | Changes |
-|------|---------|
-| `src/pages/Dashboard.tsx` | Add state, period logic, leverage slider, update calculator UI |
-
-No new files needed - all components already exist in the project.
-
----
-
-## Technical Notes
-
-- **Period selector**: Uses funding rate intervals (8h standard). Daily = 3x, Weekly = 21x, Monthly = 90x
-- **Leverage slider**: Pure UI multiplier for visualization. Does not affect actual trading
-- **All existing table columns** will automatically use new multipliers via the shared `formatProfitAbsolute` function
-- **Mobile responsive**: Uses flex-wrap for proper stacking on small screens
+- Watermark koristi `pointer-events-none` tako da ne blokira klikove
+- `z-0` osigurava da je iza svog sadržaja (header ima `z-50`)
+- Vrlo niska prozirnost (5%) čini ga jedva vidljivim ali prisutnim
