@@ -1,34 +1,73 @@
 
-# Auth System Fix - IMPLEMENTIRANO ✅
 
-## Izvršene promene
+# Plan: Omogućavanje Funding Arb i Price Arb tabova
 
-### Backend (Migracija)
-1. ✅ Kreirana `bootstrap_user()` SECURITY DEFINER funkcija za self-healing korisničkih podataka
-2. ✅ Ažuriran `handle_new_user()` trigger da bude idempotent (ON CONFLICT DO NOTHING)
-3. ✅ Dodat UNIQUE constraint na `profiles.user_id`
+## Analiza problema
 
-### Frontend
+"Funding Arb" i "Price Arb" tabovi na Dashboard-u su trenutno **onemogućeni** za korisnike sa Free planom.
 
-#### authStore.ts - Refaktorisano
-- `isAuthenticated` = `!!session` (sesija je izvor istine)
-- `user` može biti `null` čak i kad je korisnik ulogovan
-- Dodato `isUserDataLoading` i `userDataError` za granularno praćenje stanja
-- Bootstrap + retry logika: ako profil ne postoji, poziva `rpc('bootstrap_user')` i pokušava ponovo
-- Login/register odmah setuju `isAuthenticated: true` čim postoji sesija
+**Logika u kodu:**
+- Linija 138: `const isPro = user?.plan !== 'free'` - provjerava da li korisnik ima plaćeni plan
+- Linije 267 i 271: `disabled={!isPro}` - onemogućuje tabove ako korisnik nema Pro plan
 
-#### App.tsx - Routing popravljen
-- `ProtectedRoute` proverava samo `isAuthenticated` (sesiju)
-- `AdminRoute` čeka `isUserDataLoading` pre provere admin statusa
-- Nema više login loop-a zbog missing userData
+**Stanje u bazi:**
+- Korisnik trenutno ima **Free** plan i **active** subscription
 
-#### UserDataBanner.tsx - Novi komponent
-- Prikazuje loading stanje dok se profil učitava
-- Prikazuje error sa Retry dugmetom ako profil nije dostupan
-- Samo se pojavljuje kada je korisnik ulogovan ali userData ima problem
+## Predloženo rješenje
 
-## Rezultat
-- ✅ Login više ne puca zbog kasnog/nedostajućeg profila
-- ✅ Sesija i userData su razdvojeni
-- ✅ Admin provera ostaje server-side (has_role RPC)
-- ✅ Self-healing mehanizam za nove/oštećene naloge
+Ukloniti Pro ograničenje sa tabova kako bi svi korisnici mogli pristupiti Funding Arb i Price Arb funkcionalnostima.
+
+## Koraci implementacije
+
+### 1. Ukloniti `disabled` atribute sa tabova
+
+**Datoteka:** `src/pages/Dashboard.tsx`
+
+**Izmjena linija 267-274:**
+```tsx
+// Prije:
+<TabsTrigger value="funding-arb" className="gap-2" disabled={!isPro}>
+  ...
+</TabsTrigger>
+<TabsTrigger value="price-arb" className="gap-2" disabled={!isPro}>
+  ...
+</TabsTrigger>
+
+// Poslije:
+<TabsTrigger value="funding-arb" className="gap-2">
+  ...
+</TabsTrigger>
+<TabsTrigger value="price-arb" className="gap-2">
+  ...
+</TabsTrigger>
+```
+
+### 2. Ukloniti LockedFeature provjere
+
+**Izmjena linija 340-341 i 408-410:**
+
+Zamijeniti provjere `{!isPro ? (<LockedFeature ... />) : (...)}` sa direktnim prikazom sadržaja bez Pro ograničenja.
+
+### 3. (Opcionalno) Ukloniti `isPro` varijablu
+
+Ako se više ne koristi nigdje drugdje, ukloniti liniju 138.
+
+## Tehnički detalji
+
+| Element | Lokacija | Promjena |
+|---------|----------|----------|
+| TabsTrigger "funding-arb" | Linija 267 | Ukloniti `disabled={!isPro}` |
+| TabsTrigger "price-arb" | Linija 271 | Ukloniti `disabled={!isPro}` |
+| LockedFeature check | Linija 340 | Ukloniti conditional |
+| LockedFeature check | Linija 408 | Ukloniti conditional |
+
+## Alternativa
+
+Ako želite zadržati Pro ograničenje, mogu umjesto toga nadograditi korisnikov plan u bazi:
+
+```sql
+UPDATE subscriptions 
+SET plan_id = (SELECT id FROM plans WHERE tier = 'pro')
+WHERE user_id = '8277cd95-8ebe-4bf4-9023-697d575c0563';
+```
+
