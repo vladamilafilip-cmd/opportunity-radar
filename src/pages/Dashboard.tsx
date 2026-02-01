@@ -135,8 +135,6 @@ export default function Dashboard() {
     navigate("/");
   };
 
-  const isPro = user?.plan !== 'free';
-
   // Get display data (real or mock fallback)
   const displayFundingRates = realFundingRates.length > 0 
     ? realFundingRates.map((fr: any) => ({
@@ -264,11 +262,11 @@ export default function Dashboard() {
               <TrendingUp className="h-4 w-4 hidden sm:inline" />
               Funding
             </TabsTrigger>
-            <TabsTrigger value="funding-arb" className="gap-2" disabled={!isPro}>
+            <TabsTrigger value="funding-arb" className="gap-2">
               <ArrowLeftRight className="h-4 w-4 hidden sm:inline" />
               Funding Arb
             </TabsTrigger>
-            <TabsTrigger value="price-arb" className="gap-2" disabled={!isPro}>
+            <TabsTrigger value="price-arb" className="gap-2">
               <LineChart className="h-4 w-4 hidden sm:inline" />
               Price Arb
             </TabsTrigger>
@@ -337,10 +335,7 @@ export default function Dashboard() {
 
           {/* Funding Arbitrage Tab */}
           <TabsContent value="funding-arb" className="mt-6">
-            {!isPro ? (
-              <LockedFeature feature="Funding Arbitrage" />
-            ) : (
-              <Card>
+            <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <ArrowLeftRight className="h-5 w-5 text-primary" />
@@ -397,19 +392,15 @@ export default function Dashboard() {
                           ))}
                         </TableBody>
                       </Table>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
 
           {/* Price Arbitrage Tab */}
           <TabsContent value="price-arb" className="mt-6">
-            {!isPro ? (
-              <LockedFeature feature="Price Arbitrage" />
-            ) : (
-              <Card>
+            <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <LineChart className="h-5 w-5 text-primary" />
@@ -453,11 +444,10 @@ export default function Dashboard() {
                           ))}
                         </TableBody>
                       </Table>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
 
           {/* Top Opportunities Tab */}
