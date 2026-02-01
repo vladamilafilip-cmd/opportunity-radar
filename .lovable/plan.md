@@ -1,92 +1,63 @@
 
-# Plan: Watermark Logo + Favicon Usklađivanje
+# Plan: Ukloni Watermark + Dupliraj Logo u Header-u
 
 ## Pregled
-Dodavanje Diadonum logoa kao suptilan watermark u pozadinu Dashboard stranice, plus ažuriranje favicon elemenata da budu konzistentni sa favicon.jpg stilom.
+Uklanjanje watermark elementa iz pozadine i dupliranje Diadonum logoa sa ikonom u header-u (vrh stranice).
 
 ---
 
-## Deo 1: Watermark Logo u Pozadini
+## Promene
 
-### Gde se dodaje
-Pozadina glavnog sadržaja Dashboard-a (ispod svih ostalih elemenata)
+### 1. Ukloniti Watermark (linije 221-231)
+Brisanje celog bloka sa watermark logom u pozadini:
+```tsx
+// OBRISATI OVAJ BLOK:
+{/* Watermark Logo */}
+<div className="fixed inset-0 pointer-events-none z-0 ...">
+  ...
+</div>
+```
 
-### Vizuelni stil
-- Veliki logo (otprilike 300-400px)
-- Vrlo niska prozirnost (5-10%) da bude suptilan
-- Fiksiran u centru ili donjem desnom uglu
-- Ne ometa čitljivost sadržaja
-- Uključuje favicon.jpg i tekst "Diadonum"
-
-### Tehnicka implementacija
+### 2. Duplirati Logo u Header-u
+Trenutni header ima jedan logo + tekst. Dupliraćemo ga tako da bude:
+- Logo + "Diadonum" + Logo + "Diadonum"
 
 ```tsx
-// Dodati u Dashboard.tsx kao pozadinski element
-<div className="fixed inset-0 pointer-events-none z-0 flex items-center justify-center overflow-hidden">
-  <div className="opacity-[0.05] flex flex-col items-center gap-4">
-    <img 
-      src="/favicon.jpg" 
-      alt="" 
-      className="w-64 h-64 rounded-3xl object-cover"
-    />
-    <span className="text-6xl font-bold tracking-wider">DIADONUM</span>
+// TRENUTNO (linije 235-242):
+<div className="flex items-center gap-2">
+  <img src="/favicon.jpg" alt="Diadonum" className="h-9 w-9 rounded-lg object-cover"/>
+  <span className="text-lg font-bold hidden sm:inline">Diadonum</span>
+</div>
+
+// NOVO:
+<div className="flex items-center gap-4">
+  <div className="flex items-center gap-2">
+    <img src="/favicon.jpg" alt="Diadonum" className="h-9 w-9 rounded-lg object-cover"/>
+    <span className="text-lg font-bold hidden sm:inline">Diadonum</span>
+  </div>
+  <div className="flex items-center gap-2">
+    <img src="/favicon.jpg" alt="Diadonum" className="h-9 w-9 rounded-lg object-cover"/>
+    <span className="text-lg font-bold hidden sm:inline">Diadonum</span>
   </div>
 </div>
 ```
 
 ---
 
-## Deo 2: Favicon Konzistentnost
-
-### Trenutno stanje
-- `public/favicon.jpg` - glavni logo (koristi se)
-- `public/favicon.ico` - stari format
-- `public/icons/icon-512.svg` - SVG ikona sa drugačijim dizajnom (krugovi + linija)
-- `index.html` - referencira `/favicon.jpg`
-
-### Promene
-1. **index.html** - već koristi favicon.jpg, ostaje isto
-2. **manifest.json** - ažurirati da koristi favicon.jpg umesto PNG ikona (ili ostaviti jer PWA radi)
-3. **Opciono**: Generisati PNG ikone od favicon.jpg za PWA (72, 96, 128, 144, 152, 192, 384, 512px)
-
-### Preporuka
-Posto favicon.jpg već funkcioniše i koristi se, predlažem da manifest.json ažuriramo da koristi favicon.jpg direktno umesto nepostojećih PNG fajlova.
-
----
-
-## Fajlovi za izmenu
-
-| Fajl | Izmena |
-|------|--------|
-| `src/pages/Dashboard.tsx` | Dodati watermark element u pozadini |
-| `public/manifest.json` | Opciono: ažurirati ikone da koriste favicon.jpg |
-
----
-
 ## Vizualni prikaz
 
 ```text
-+----------------------------------------------------------+
-|  [Logo] Diadonum           [Live Data] [Refresh] [User]  |
-+----------------------------------------------------------+
-|                                                           |
-|  Risk Disclaimer banner (plava boja)                     |
-|                                                           |
-|  +-- Kalkulator profita --+                              |
-|  |  ...                    |     ╭─────────────╮         |
-|  +-------------------------+     │             │         |
-|                                  │  [favicon]  │ ← 5%    |
-|  [Tabs: Funding | Arb | ...]     │             │  opacity|
-|                                  │  DIADONUM   │         |
-|  Tabele sa podacima...           │             │         |
-|                                  ╰─────────────╯         |
-+----------------------------------------------------------+
+BILO:
+[Logo] Diadonum                    [Live Data] [Refresh] [User]
+
+BIĆE:
+[Logo] Diadonum  [Logo] Diadonum   [Live Data] [Refresh] [User]
 ```
 
 ---
 
-## Tehnička napomena
+## Fajl za izmenu
 
-- Watermark koristi `pointer-events-none` tako da ne blokira klikove
-- `z-0` osigurava da je iza svog sadržaja (header ima `z-50`)
-- Vrlo niska prozirnost (5%) čini ga jedva vidljivim ali prisutnim
+| Fajl | Izmena |
+|------|--------|
+| `src/pages/Dashboard.tsx` | Obrisati watermark (linije 221-231), duplirati logo u header-u (linije 235-242) |
