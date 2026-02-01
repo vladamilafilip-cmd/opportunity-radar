@@ -18,6 +18,8 @@ import {
   generatePriceArbitrage,
   generateOpportunities,
 } from "@/lib/mockData";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { 
   Radar, 
   TrendingUp, 
@@ -30,7 +32,8 @@ import {
   ShieldCheck,
   Star,
   Database,
-  AlertCircle
+  AlertCircle,
+  Calculator
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -49,6 +52,16 @@ export default function Dashboard() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [dataSource, setDataSource] = useState<DataSource>("mock");
   const [isLoadingRealData, setIsLoadingRealData] = useState(true);
+  const [investmentAmount, setInvestmentAmount] = useState<number>(10000);
+
+  // Helper function to format profit in absolute numbers
+  const formatProfitAbsolute = (percent: number): string => {
+    if (!Number.isFinite(percent)) return "$0.00";
+    const profit = investmentAmount * percent;
+    return profit >= 0 
+      ? `+$${profit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+      : `-$${Math.abs(profit).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  };
   
   // Real data from Supabase
   const [realMetrics, setRealMetrics] = useState<any[]>([]);
@@ -256,8 +269,36 @@ export default function Dashboard() {
         <UserDataBanner />
         <DisclaimerBanner />
         
+        {/* Investment Calculator */}
+        <Card className="mb-6 mt-6">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Calculator className="h-5 w-5 text-primary" />
+              Kalkulator profita
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap items-center gap-4">
+              <Label htmlFor="investment" className="text-sm font-medium">Uložena suma:</Label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                <Input
+                  id="investment"
+                  type="number"
+                  value={investmentAmount}
+                  onChange={(e) => setInvestmentAmount(Math.max(0, Number(e.target.value)))}
+                  className="pl-7 w-40"
+                  min={0}
+                />
+              </div>
+              <span className="text-sm text-muted-foreground">
+                Unesi sumu za prikaz procijenjenog profita u USD
+              </span>
+            </div>
+          </CardContent>
+        </Card>
         
-        <Tabs defaultValue="funding" className="mt-6">
+        <Tabs defaultValue="funding">
           <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-grid">
             <TabsTrigger value="funding" className="gap-2">
               <TrendingUp className="h-4 w-4 hidden sm:inline" />
@@ -364,10 +405,11 @@ export default function Dashboard() {
                       <Table>
                         <TableHeader>
                           <TableRow>
-                            <TableHead>Symbol</TableHead>
+                          <TableHead>Symbol</TableHead>
                             <TableHead>Long Exchange</TableHead>
                             <TableHead>Short Exchange</TableHead>
                             <TableHead className="text-right">Net Profit</TableHead>
+                            <TableHead className="text-right">Est. Profit ($)</TableHead>
                             <TableHead className="text-right">Score</TableHead>
                             <TableHead>Risk</TableHead>
                             <TableHead></TableHead>
@@ -380,9 +422,12 @@ export default function Dashboard() {
                               <TableCell className="text-green-600">{arb.longExchange || 'N/A'}</TableCell>
                               <TableCell className="text-red-600">{arb.shortExchange || 'N/A'}</TableCell>
                               <TableCell className="text-right font-mono text-green-600">
-                                {Number.isFinite(arb.netProfit ?? arb.spread) ? `+${(((arb.netProfit ?? arb.spread) || 0) * 100).toFixed(4)}%` : 'N/A'}
+                                {Number.isFinite(arb.netProfit ?? arb.spread) ? `+${(((arb.netProfit ?? arb.spread) || 0) * 100).toFixed(4)}%` : '0.0000%'}
                               </TableCell>
-                              <TableCell className="text-right font-bold">{Number.isFinite(arb.score) ? arb.score : 'N/A'}</TableCell>
+                              <TableCell className="text-right font-mono font-semibold text-green-600">
+                                {formatProfitAbsolute((arb.netProfit ?? arb.spread) || 0)}
+                              </TableCell>
+                              <TableCell className="text-right font-bold">{Number.isFinite(arb.score) ? arb.score : 0}</TableCell>
                               <TableCell>
                                 <RiskBadge tier={arb.riskTier || 'medium'} />
                               </TableCell>
@@ -424,10 +469,11 @@ export default function Dashboard() {
                       <Table>
                         <TableHeader>
                           <TableRow>
-                            <TableHead>Symbol</TableHead>
+                          <TableHead>Symbol</TableHead>
                             <TableHead>Buy Exchange</TableHead>
                             <TableHead>Sell Exchange</TableHead>
                             <TableHead className="text-right">Spread</TableHead>
+                            <TableHead className="text-right">Est. Profit ($)</TableHead>
                             <TableHead className="text-right">Score</TableHead>
                             <TableHead>Risk</TableHead>
                           </TableRow>
@@ -439,9 +485,12 @@ export default function Dashboard() {
                               <TableCell className="text-green-600">{arb.buyExchange || 'N/A'}</TableCell>
                               <TableCell className="text-red-600">{arb.sellExchange || 'N/A'}</TableCell>
                               <TableCell className="text-right font-mono text-green-600">
-                                {Number.isFinite(arb.spread) ? `+${(arb.spread * 100).toFixed(4)}%` : 'N/A'}
+                                {Number.isFinite(arb.spread) ? `+${(arb.spread * 100).toFixed(4)}%` : '0.0000%'}
                               </TableCell>
-                              <TableCell className="text-right font-bold">{Number.isFinite(arb.score) ? arb.score : 'N/A'}</TableCell>
+                              <TableCell className="text-right font-mono font-semibold text-green-600">
+                                {formatProfitAbsolute(arb.spread || 0)}
+                              </TableCell>
+                              <TableCell className="text-right font-bold">{Number.isFinite(arb.score) ? arb.score : 0}</TableCell>
                               <TableCell>
                                 <RiskBadge tier={arb.riskTier} />
                               </TableCell>
@@ -478,7 +527,8 @@ export default function Dashboard() {
                         <TableRow>
                           <TableHead>Symbol</TableHead>
                           <TableHead>Type</TableHead>
-                          <TableHead className="text-right">Est. Profit</TableHead>
+                          <TableHead className="text-right">Est. Profit %</TableHead>
+                          <TableHead className="text-right">Est. Profit ($)</TableHead>
                           <TableHead className="text-right">Score</TableHead>
                           <TableHead>Risk</TableHead>
                           <TableHead></TableHead>
@@ -492,21 +542,24 @@ export default function Dashboard() {
                                 <Badge variant="outline">{opp.type || 'N/A'}</Badge>
                               </TableCell>
                               <TableCell className="text-right font-mono text-green-600">
-                                {Number.isFinite(opp.estimatedProfit) ? `+${(opp.estimatedProfit * 100).toFixed(4)}%` : 'N/A'}
+                                {Number.isFinite(opp.estimatedProfit) ? `+${(opp.estimatedProfit * 100).toFixed(4)}%` : '0.0000%'}
                               </TableCell>
-                              <TableCell className="text-right font-bold">{Number.isFinite(opp.score) ? opp.score : 'N/A'}</TableCell>
+                              <TableCell className="text-right font-mono font-semibold text-green-600">
+                                {formatProfitAbsolute(opp.estimatedProfit || 0)}
+                              </TableCell>
+                              <TableCell className="text-right font-bold">{Number.isFinite(opp.score) ? opp.score : 0}</TableCell>
                               <TableCell>
                                 <RiskBadge tier={opp.riskTier || 'medium'} />
                               </TableCell>
-                            <TableCell>
-                              <Link to={`/opportunity/${opp.id}`}>
-                                <Button size="sm" variant="outline">
-                                  Open
-                                </Button>
-                              </Link>
-                            </TableCell>
-                          </TableRow>
-                        ))}
+                              <TableCell>
+                                <Link to={`/opportunity/${opp.id}`}>
+                                  <Button size="sm" variant="outline">
+                                    Open
+                                  </Button>
+                                </Link>
+                              </TableCell>
+                            </TableRow>
+                          ))}
                       </TableBody>
                     </Table>
                   </div>
