@@ -627,13 +627,17 @@ export type Database = {
       exchanges: {
         Row: {
           api_base_url: string | null
+          batch_endpoint: string | null
           code: string
           created_at: string
+          exchange_tier: number | null
+          funding_interval_hours: number | null
           id: string
           is_active: boolean
           logo_url: string | null
           maker_fee: number
           name: string
+          rate_limit_per_min: number | null
           supported_features: Json | null
           taker_fee: number
           website_url: string | null
@@ -642,13 +646,17 @@ export type Database = {
         }
         Insert: {
           api_base_url?: string | null
+          batch_endpoint?: string | null
           code: string
           created_at?: string
+          exchange_tier?: number | null
+          funding_interval_hours?: number | null
           id?: string
           is_active?: boolean
           logo_url?: string | null
           maker_fee?: number
           name: string
+          rate_limit_per_min?: number | null
           supported_features?: Json | null
           taker_fee?: number
           website_url?: string | null
@@ -657,13 +665,17 @@ export type Database = {
         }
         Update: {
           api_base_url?: string | null
+          batch_endpoint?: string | null
           code?: string
           created_at?: string
+          exchange_tier?: number | null
+          funding_interval_hours?: number | null
           id?: string
           is_active?: boolean
           logo_url?: string | null
           maker_fee?: number
           name?: string
+          rate_limit_per_min?: number | null
           supported_features?: Json | null
           taker_fee?: number
           website_url?: string | null
@@ -837,6 +849,56 @@ export type Database = {
           status?: string
         }
         Relationships: []
+      }
+      ingestion_schedule: {
+        Row: {
+          backoff_until: string | null
+          consecutive_failures: number | null
+          created_at: string | null
+          exchange_id: string
+          id: string
+          interval_minutes: number
+          is_active: boolean | null
+          last_run_at: string | null
+          next_run_at: string | null
+          symbol_tier: number
+          updated_at: string | null
+        }
+        Insert: {
+          backoff_until?: string | null
+          consecutive_failures?: number | null
+          created_at?: string | null
+          exchange_id: string
+          id?: string
+          interval_minutes?: number
+          is_active?: boolean | null
+          last_run_at?: string | null
+          next_run_at?: string | null
+          symbol_tier: number
+          updated_at?: string | null
+        }
+        Update: {
+          backoff_until?: string | null
+          consecutive_failures?: number | null
+          created_at?: string | null
+          exchange_id?: string
+          id?: string
+          interval_minutes?: number
+          is_active?: boolean | null
+          last_run_at?: string | null
+          next_run_at?: string | null
+          symbol_tier?: number
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ingestion_schedule_exchange_id_fkey"
+            columns: ["exchange_id"]
+            isOneToOne: false
+            referencedRelation: "exchanges"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       markets: {
         Row: {
@@ -1639,7 +1701,10 @@ export type Database = {
           display_name: string
           id: string
           is_active: boolean
+          is_meme: boolean | null
           quote_asset: string
+          symbol_tier: number | null
+          volatility_multiplier: number | null
         }
         Insert: {
           base_asset: string
@@ -1648,7 +1713,10 @@ export type Database = {
           display_name: string
           id?: string
           is_active?: boolean
+          is_meme?: boolean | null
           quote_asset: string
+          symbol_tier?: number | null
+          volatility_multiplier?: number | null
         }
         Update: {
           base_asset?: string
@@ -1657,7 +1725,10 @@ export type Database = {
           display_name?: string
           id?: string
           is_active?: boolean
+          is_meme?: boolean | null
           quote_asset?: string
+          symbol_tier?: number | null
+          volatility_multiplier?: number | null
         }
         Relationships: []
       }
