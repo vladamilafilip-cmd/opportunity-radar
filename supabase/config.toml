@@ -1,1 +1,4 @@
 project_id = "hibdoaiqgvbjhmiozhth"
+
+[functions.run-metrics-engine]
+verify_jwt = false
