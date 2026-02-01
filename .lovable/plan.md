@@ -1,73 +1,130 @@
 
+# Plan: Kalkulator profita na uloženu sumu
 
-# Plan: Omogućavanje Funding Arb i Price Arb tabova
+## Opis
 
-## Analiza problema
+Dodati interaktivni kalkulator koji omogućava korisnicima da unesu uloženu sumu i vide procijenjeni profit u apsolutnim brojevima (USD/USDT) umjesto samo procenata.
 
-"Funding Arb" i "Price Arb" tabovi na Dashboard-u su trenutno **onemogućeni** za korisnike sa Free planom.
+## Izmjene
 
-**Logika u kodu:**
-- Linija 138: `const isPro = user?.plan !== 'free'` - provjerava da li korisnik ima plaćeni plan
-- Linije 267 i 271: `disabled={!isPro}` - onemogućuje tabove ako korisnik nema Pro plan
-
-**Stanje u bazi:**
-- Korisnik trenutno ima **Free** plan i **active** subscription
-
-## Predloženo rješenje
-
-Ukloniti Pro ograničenje sa tabova kako bi svi korisnici mogli pristupiti Funding Arb i Price Arb funkcionalnostima.
-
-## Koraci implementacije
-
-### 1. Ukloniti `disabled` atribute sa tabova
+### 1. Dodati state za uloženu sumu
 
 **Datoteka:** `src/pages/Dashboard.tsx`
 
-**Izmjena linija 267-274:**
+Dodati novi state na početku komponente:
 ```tsx
-// Prije:
-<TabsTrigger value="funding-arb" className="gap-2" disabled={!isPro}>
-  ...
-</TabsTrigger>
-<TabsTrigger value="price-arb" className="gap-2" disabled={!isPro}>
-  ...
-</TabsTrigger>
-
-// Poslije:
-<TabsTrigger value="funding-arb" className="gap-2">
-  ...
-</TabsTrigger>
-<TabsTrigger value="price-arb" className="gap-2">
-  ...
-</TabsTrigger>
+const [investmentAmount, setInvestmentAmount] = useState<number>(10000);
 ```
 
-### 2. Ukloniti LockedFeature provjere
+### 2. Kreirati Kalkulator komponentu
 
-**Izmjena linija 340-341 i 408-410:**
+Dodati novu sekciju iznad tabova sa:
+- Input polje za unos sume (default: $10,000)
+- Label i formatiranje broja sa separatorima
+- Responsive dizajn
 
-Zamijeniti provjere `{!isPro ? (<LockedFeature ... />) : (...)}` sa direktnim prikazom sadržaja bez Pro ograničenja.
+```tsx
+{/* Investment Calculator */}
+<Card className="mb-6">
+  <CardHeader className="pb-3">
+    <CardTitle className="flex items-center gap-2 text-lg">
+      <Calculator className="h-5 w-5 text-primary" />
+      Kalkulator profita
+    </CardTitle>
+  </CardHeader>
+  <CardContent>
+    <div className="flex items-center gap-4">
+      <Label htmlFor="investment">Uložena suma:</Label>
+      <div className="relative">
+        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+        <Input
+          id="investment"
+          type="number"
+          value={investmentAmount}
+          onChange={(e) => setInvestmentAmount(Number(e.target.value))}
+          className="pl-7 w-40"
+          min={0}
+        />
+      </div>
+    </div>
+  </CardContent>
+</Card>
+```
 
-### 3. (Opcionalno) Ukloniti `isPro` varijablu
+### 3. Ažurirati tabele sa apsolutnim profitom
 
-Ako se više ne koristi nigdje drugdje, ukloniti liniju 138.
+**Funding Arb tabela** - dodati kolonu "Est. Profit ($)":
 
-## Tehnički detalji
+| Kolona | Formula |
+|--------|---------|
+| Est. Profit ($) | `investmentAmount * (netProfit / 100)` |
+
+**Price Arb tabela** - dodati kolonu "Est. Profit ($)":
+
+| Kolona | Formula |
+|--------|---------|
+| Est. Profit ($) | `investmentAmount * (spread / 100)` |
+
+**Top Opportunities tabela** - dodati kolonu "Est. Profit ($)":
+
+| Kolona | Formula |
+|--------|---------|
+| Est. Profit ($) | `investmentAmount * (estimatedProfit / 100)` |
+
+### 4. Format funkcija za prikaz
+
+Kreirati helper funkciju za formatiranje profita:
+```tsx
+const formatProfit = (percent: number): string => {
+  const profit = investmentAmount * (percent / 100);
+  return profit >= 0 
+    ? `+$${profit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    : `-$${Math.abs(profit).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+};
+```
+
+### 5. Dodati import za ikonu i komponente
+
+```tsx
+import { Calculator } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+```
+
+## Prikaz u tabelama
+
+**Prije:**
+| Net Profit |
+|------------|
+| +0.0234% |
+
+**Poslije:**
+| Net Profit | Est. Profit ($) |
+|------------|-----------------|
+| +0.0234% | +$2.34 |
+
+## Lokacije izmjena
 
 | Element | Lokacija | Promjena |
 |---------|----------|----------|
-| TabsTrigger "funding-arb" | Linija 267 | Ukloniti `disabled={!isPro}` |
-| TabsTrigger "price-arb" | Linija 271 | Ukloniti `disabled={!isPro}` |
-| LockedFeature check | Linija 340 | Ukloniti conditional |
-| LockedFeature check | Linija 408 | Ukloniti conditional |
+| State | Linija ~48 | Dodati `investmentAmount` state |
+| Import | Linija 21-34 | Dodati `Calculator` ikonu |
+| Import | Linija 1-14 | Dodati `Input`, `Label` |
+| Kalkulator UI | Prije tabova (~259) | Nova Card komponenta |
+| Funding Arb | Linije 364-396 | Dodati Est. Profit kolonu |
+| Price Arb | Linije 424-448 | Dodati Est. Profit kolonu |
+| Top Opps | Linije 476-509 | Ažurirati Est. Profit prikaz |
 
-## Alternativa
+## Primjer izlaza
 
-Ako želite zadržati Pro ograničenje, mogu umjesto toga nadograditi korisnikov plan u bazi:
+Za uloženu sumu od $10,000 i Net Profit od 0.0234%:
 
-```sql
-UPDATE subscriptions 
-SET plan_id = (SELECT id FROM plans WHERE tier = 'pro')
-WHERE user_id = '8277cd95-8ebe-4bf4-9023-697d575c0563';
+```
+Est. Profit ($): +$2.34
 ```
 
+Za uloženu sumu od $50,000 i Net Profit od 0.15%:
+
+```
+Est. Profit ($): +$75.00
+```
