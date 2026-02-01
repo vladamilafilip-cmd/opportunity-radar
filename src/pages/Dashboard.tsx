@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/store/authStore";
 import { supabase } from "@/integrations/supabase/client";
-import { supabaseReady, safeQuery } from "@/lib/supabaseHelpers";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -61,52 +60,51 @@ export default function Dashboard() {
   const [mockPriceArbs] = useState(generatePriceArbitrage());
   const [mockOpportunities] = useState(generateOpportunities());
 
-  // Fetch real data from Supabase
+  // Fetch real data from Supabase using direct SDK calls
   const fetchRealData = useCallback(async () => {
-    if (!supabaseReady) {
-      setDataSource("mock");
-      setIsLoadingRealData(false);
-      return;
-    }
-
     setIsLoadingRealData(true);
 
-    const [metricsResult, signalsResult, fundingResult] = await Promise.all([
-      safeQuery(async () =>
-        await supabase
+    try {
+      // Parallel fetch using direct SDK calls
+      const [metricsResult, signalsResult, fundingResult] = await Promise.all([
+        supabase
           .from("computed_metrics_v2")
           .select("*")
           .order("ts", { ascending: false })
-          .limit(50)
-      ),
-      safeQuery(async () =>
-        await supabase
+          .limit(50),
+        supabase
           .from("trading_signals")
           .select("*")
           .order("created_at", { ascending: false })
-          .limit(20)
-      ),
-      safeQuery(async () =>
-        await supabase
+          .limit(20),
+        supabase
           .from("funding_rates")
           .select("*")
           .order("ts", { ascending: false })
-          .limit(50)
-      ),
-    ]);
+          .limit(50),
+      ]);
 
-    const hasRealMetrics = metricsResult.data && (metricsResult.data as any[]).length > 0;
-    const hasRealSignals = signalsResult.data && (signalsResult.data as any[]).length > 0;
-    const hasRealFunding = fundingResult.data && (fundingResult.data as any[]).length > 0;
+      const hasRealMetrics = metricsResult.data && metricsResult.data.length > 0;
+      const hasRealSignals = signalsResult.data && signalsResult.data.length > 0;
+      const hasRealFunding = fundingResult.data && fundingResult.data.length > 0;
 
-    if (hasRealMetrics) setRealMetrics(metricsResult.data as any[]);
-    if (hasRealSignals) setRealSignals(signalsResult.data as any[]);
-    if (hasRealFunding) setRealFundingRates(fundingResult.data as any[]);
+      if (hasRealMetrics) setRealMetrics(metricsResult.data);
+      if (hasRealSignals) setRealSignals(signalsResult.data);
+      if (hasRealFunding) setRealFundingRates(fundingResult.data);
 
-    // Determine data source
-    if (hasRealMetrics || hasRealSignals || hasRealFunding) {
-      setDataSource(hasRealMetrics && hasRealSignals && hasRealFunding ? "live" : "mixed");
-    } else {
+      // Log any errors for debugging
+      if (metricsResult.error) console.error("Metrics error:", metricsResult.error.message);
+      if (signalsResult.error) console.error("Signals error:", signalsResult.error.message);
+      if (fundingResult.error) console.error("Funding error:", fundingResult.error.message);
+
+      // Determine data source
+      if (hasRealMetrics || hasRealSignals || hasRealFunding) {
+        setDataSource(hasRealMetrics && hasRealSignals && hasRealFunding ? "live" : "mixed");
+      } else {
+        setDataSource("mock");
+      }
+    } catch (e: any) {
+      console.error("Data fetch error:", e.message);
       setDataSource("mock");
     }
 
@@ -230,7 +228,7 @@ export default function Dashboard() {
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
-                  <Link to="/health" className="cursor-pointer">
+                  <Link to="/" className="cursor-pointer">
                     <AlertCircle className="h-4 w-4 mr-2" />
                     Health Check
                   </Link>
@@ -258,7 +256,7 @@ export default function Dashboard() {
               <p className="font-medium text-yellow-800 dark:text-yellow-200">Using Mock Data</p>
               <p className="text-sm text-yellow-700 dark:text-yellow-300">
                 No live data found in database. Displaying mock data for demonstration.
-                Visit <Link to="/health" className="underline font-medium">Health Check</Link> to verify database connectivity.
+                Visit <Link to="/" className="underline font-medium">Health Check</Link> to verify database connectivity.
               </p>
             </div>
           </div>
@@ -322,7 +320,7 @@ export default function Dashboard() {
                           <TableRow key={`${rate.exchange}-${rate.symbol}-${idx}`}>
                             <TableCell className="font-medium">{rate.exchange || 'N/A'}</TableCell>
                             <TableCell>{rate.symbol || 'N/A'}</TableCell>
-                            <TableCell className={`text-right font-mono ${(rate.fundingRate || 0) >= 0 ? 'text-success' : 'text-danger'}`}>
+                            <TableCell className={`text-right font-mono ${(rate.fundingRate || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                               {(rate.fundingRate || 0) >= 0 ? '+' : ''}{((rate.fundingRate || 0) * 100).toFixed(4)}%
                             </TableCell>
                             <TableCell className="text-muted-foreground">
@@ -383,9 +381,9 @@ export default function Dashboard() {
                           {displaySignals.map((arb: any) => (
                             <TableRow key={arb.id}>
                               <TableCell className="font-medium">{arb.symbol || 'N/A'}</TableCell>
-                              <TableCell className="text-success">{arb.longExchange || 'N/A'}</TableCell>
-                              <TableCell className="text-danger">{arb.shortExchange || 'N/A'}</TableCell>
-                              <TableCell className="text-right font-mono text-success">
+                              <TableCell className="text-green-600">{arb.longExchange || 'N/A'}</TableCell>
+                              <TableCell className="text-red-600">{arb.shortExchange || 'N/A'}</TableCell>
+                              <TableCell className="text-right font-mono text-green-600">
                                 +{((arb.netProfit || arb.spread || 0) * 100).toFixed(4)}%
                               </TableCell>
                               <TableCell className="text-right font-bold">{arb.score || 0}</TableCell>
@@ -437,31 +435,23 @@ export default function Dashboard() {
                             <TableHead>Symbol</TableHead>
                             <TableHead>Buy Exchange</TableHead>
                             <TableHead>Sell Exchange</TableHead>
-                            <TableHead className="text-right">Spread %</TableHead>
-                            <TableHead className="text-right">Net (After Fees)</TableHead>
+                            <TableHead className="text-right">Spread</TableHead>
                             <TableHead className="text-right">Score</TableHead>
-                            <TableHead></TableHead>
+                            <TableHead>Risk</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {mockPriceArbs.map((arb) => (
+                          {mockPriceArbs.map((arb: any) => (
                             <TableRow key={arb.id}>
                               <TableCell className="font-medium">{arb.symbol}</TableCell>
-                              <TableCell className="text-success">{arb.buyExchange}</TableCell>
-                              <TableCell className="text-danger">{arb.sellExchange}</TableCell>
-                              <TableCell className="text-right font-mono">
-                                {arb.spreadPercent.toFixed(3)}%
-                              </TableCell>
-                              <TableCell className={`text-right font-mono ${arb.netAfterFees >= 0 ? 'text-success' : 'text-danger'}`}>
-                                {arb.netAfterFees >= 0 ? '+' : ''}{arb.netAfterFees.toFixed(3)}%
+                              <TableCell className="text-green-600">{arb.buyExchange}</TableCell>
+                              <TableCell className="text-red-600">{arb.sellExchange}</TableCell>
+                              <TableCell className="text-right font-mono text-green-600">
+                                +{(arb.spread * 100).toFixed(4)}%
                               </TableCell>
                               <TableCell className="text-right font-bold">{arb.score}</TableCell>
                               <TableCell>
-                                <Link to={`/opportunity/${arb.id}`}>
-                                  <Button size="sm" variant="outline">
-                                    Open
-                                  </Button>
-                                </Link>
+                                <RiskBadge tier={arb.riskTier} />
                               </TableCell>
                             </TableRow>
                           ))}
@@ -474,7 +464,7 @@ export default function Dashboard() {
             )}
           </TabsContent>
 
-          {/* Opportunities Tab */}
+          {/* Top Opportunities Tab */}
           <TabsContent value="opportunities" className="mt-6">
             <Card>
               <CardHeader>
@@ -485,54 +475,50 @@ export default function Dashboard() {
               </CardHeader>
               <CardContent>
                 {isLoadingRealData ? (
-                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    {[...Array(6)].map((_, i) => (
-                      <Skeleton key={i} className="h-32 w-full" />
+                  <div className="space-y-3">
+                    {[...Array(5)].map((_, i) => (
+                      <Skeleton key={i} className="h-12 w-full" />
                     ))}
                   </div>
                 ) : (
-                  <>
-                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                      {mockOpportunities.slice(0, isPro ? 12 : 3).map((opp) => (
-                        <Link key={opp.id} to={`/opportunity/${opp.id}`}>
-                          <Card className="trading-card h-full cursor-pointer">
-                            <CardContent className="p-4">
-                              <div className="flex items-start justify-between mb-2">
-                                <div>
-                                  <p className="font-bold">{opp.symbol}</p>
-                                  <p className="text-xs text-muted-foreground capitalize">{opp.type} Arb</p>
-                                </div>
-                                <RiskBadge tier={opp.riskTier} />
-                              </div>
-                              <div className="flex items-center justify-between mt-4">
-                                <div>
-                                  <p className="text-xs text-muted-foreground">Potential</p>
-                                  <p className="text-lg font-bold text-success">
-                                    +{opp.potentialReturn.toFixed(2)}%
-                                  </p>
-                                </div>
-                                <div className="text-right">
-                                  <p className="text-xs text-muted-foreground">Score</p>
-                                  <p className="text-2xl font-bold text-primary">{opp.score}</p>
-                                </div>
-                              </div>
-                              <p className="text-xs text-muted-foreground mt-3">
-                                {opp.exchanges.join(' ↔ ')}
-                              </p>
-                            </CardContent>
-                          </Card>
-                        </Link>
-                      ))}
-                    </div>
-                    {!isPro && (
-                      <div className="mt-6 text-center">
-                        <p className="text-muted-foreground mb-2">Upgrade to see all opportunities</p>
-                        <Link to="/billing">
-                          <Button>Upgrade to PRO</Button>
-                        </Link>
-                      </div>
-                    )}
-                  </>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Symbol</TableHead>
+                          <TableHead>Type</TableHead>
+                          <TableHead className="text-right">Est. Profit</TableHead>
+                          <TableHead className="text-right">Score</TableHead>
+                          <TableHead>Risk</TableHead>
+                          <TableHead></TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {mockOpportunities.map((opp: any) => (
+                          <TableRow key={opp.id}>
+                            <TableCell className="font-medium">{opp.symbol}</TableCell>
+                            <TableCell>
+                              <Badge variant="outline">{opp.type}</Badge>
+                            </TableCell>
+                            <TableCell className="text-right font-mono text-green-600">
+                              +{(opp.estimatedProfit * 100).toFixed(4)}%
+                            </TableCell>
+                            <TableCell className="text-right font-bold">{opp.score}</TableCell>
+                            <TableCell>
+                              <RiskBadge tier={opp.riskTier} />
+                            </TableCell>
+                            <TableCell>
+                              <Link to={`/opportunity/${opp.id}`}>
+                                <Button size="sm" variant="outline">
+                                  Open
+                                </Button>
+                              </Link>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
                 )}
               </CardContent>
             </Card>
@@ -543,19 +529,18 @@ export default function Dashboard() {
   );
 }
 
+// Locked feature component for Pro features
 function LockedFeature({ feature }: { feature: string }) {
   return (
-    <Card className="text-center py-12">
-      <CardContent>
-        <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
-          <ArrowLeftRight className="h-8 w-8 text-muted-foreground" />
-        </div>
-        <h3 className="text-xl font-bold mb-2">{feature} Locked</h3>
-        <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-          Upgrade to PRO to unlock {feature.toLowerCase()} signals and start finding profitable opportunities.
+    <Card>
+      <CardContent className="py-12 text-center">
+        <ShieldCheck className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+        <h3 className="text-lg font-semibold mb-2">{feature} is a Pro Feature</h3>
+        <p className="text-muted-foreground mb-4">
+          Upgrade to Pro to access advanced arbitrage opportunities and signals.
         </p>
         <Link to="/billing">
-          <Button size="lg">Upgrade to PRO - £20/month</Button>
+          <Button>Upgrade to Pro</Button>
         </Link>
       </CardContent>
     </Card>
