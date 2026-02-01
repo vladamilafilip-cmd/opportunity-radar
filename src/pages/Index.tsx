@@ -6,6 +6,10 @@ import {
   safeQuery, 
   restPing, 
   restWhoAmI,
+  authHealth,
+  authSessionStatus,
+  restTableProbe,
+  warmup,
   getStatusHint 
 } from "@/lib/supabaseHelpers";
 import { Button } from "@/components/ui/button";
@@ -23,7 +27,9 @@ import {
   Wifi,
   Key,
   Server,
-  Clock
+  Clock,
+  Zap,
+  User
 } from "lucide-react";
 import { Link } from "react-router-dom";
 
@@ -36,6 +42,13 @@ type PingResult = {
   error?: string;
 } | null;
 
+type SessionResult = {
+  hasSession: boolean;
+  userId?: string;
+  expiresAt?: number;
+  error?: string;
+} | null;
+
 type TestResult = {
   table: string;
   status: "idle" | "loading" | "success" | "error" | "timeout";
@@ -43,7 +56,16 @@ type TestResult = {
   error: string | null;
   rowCount: number;
   elapsedMs: number;
+  retryAttempts?: number;
 };
+
+type ProbeResult = {
+  table: string;
+  status: "idle" | "loading" | "success" | "error";
+  httpStatus: number;
+  text: string;
+  elapsedMs: number;
+} | null;
 
 const TABLES_TO_TEST = [
   { name: "symbols", label: "Symbols" },
@@ -55,11 +77,17 @@ const TABLES_TO_TEST = [
 
 export default function HealthCheck() {
   const [results, setResults] = useState<Record<string, TestResult>>({});
+  const [probeResults, setProbeResults] = useState<Record<string, ProbeResult>>({});
   const [isTestingAll, setIsTestingAll] = useState(false);
+  const [isProbingAll, setIsProbingAll] = useState(false);
   const [restPingResult, setRestPingResult] = useState<PingResult>(null);
-  const [authPingResult, setAuthPingResult] = useState<PingResult>(null);
+  const [authHealthResult, setAuthHealthResult] = useState<PingResult>(null);
+  const [sessionResult, setSessionResult] = useState<SessionResult>(null);
   const [isPingingRest, setIsPingingRest] = useState(false);
   const [isPingingAuth, setIsPingingAuth] = useState(false);
+  const [isCheckingSession, setIsCheckingSession] = useState(false);
+  const [isWarmingUp, setIsWarmingUp] = useState(false);
+  const [warmupResult, setWarmupResult] = useState<any>(null);
   const [copySuccess, setCopySuccess] = useState(false);
 
   const envStatus = getSupabaseEnvStatus();
@@ -73,16 +101,70 @@ export default function HealthCheck() {
     setIsPingingRest(false);
   };
 
-  // Auth Ping test
-  const handleAuthPing = async () => {
+  // Auth Health test (public endpoint)
+  const handleAuthHealth = async () => {
     setIsPingingAuth(true);
-    setAuthPingResult(null);
-    const result = await restWhoAmI();
-    setAuthPingResult(result);
+    setAuthHealthResult(null);
+    const result = await authHealth();
+    setAuthHealthResult(result);
     setIsPingingAuth(false);
   };
 
-  // Table query test
+  // Session status check
+  const handleSessionCheck = async () => {
+    setIsCheckingSession(true);
+    setSessionResult(null);
+    const result = await authSessionStatus();
+    setSessionResult(result);
+    setIsCheckingSession(false);
+  };
+
+  // Warmup
+  const handleWarmup = async () => {
+    setIsWarmingUp(true);
+    setWarmupResult(null);
+    const result = await warmup();
+    setWarmupResult(result);
+    setIsWarmingUp(false);
+  };
+
+  // REST Table Probe
+  const probeTable = async (tableName: string) => {
+    setProbeResults((prev) => ({
+      ...prev,
+      [tableName]: { 
+        table: tableName, 
+        status: "loading", 
+        httpStatus: 0, 
+        text: "", 
+        elapsedMs: 0 
+      },
+    }));
+
+    const result = await restTableProbe(tableName);
+
+    setProbeResults((prev) => ({
+      ...prev,
+      [tableName]: {
+        table: tableName,
+        status: result.ok ? "success" : "error",
+        httpStatus: result.status,
+        text: result.text,
+        elapsedMs: result.elapsedMs,
+      },
+    }));
+  };
+
+  // Probe all tables
+  const probeAllTables = async () => {
+    setIsProbingAll(true);
+    for (const table of TABLES_TO_TEST) {
+      await probeTable(table.name);
+    }
+    setIsProbingAll(false);
+  };
+
+  // Supabase-js table query test (lightweight)
   const testTable = async (tableName: string) => {
     setResults((prev) => ({
       ...prev,
@@ -107,9 +189,10 @@ export default function HealthCheck() {
           table: tableName,
           status: "timeout",
           data: null,
-          error: `Request aborted after ${result.elapsedMs}ms`,
+          error: `ABORT after ${result.elapsedMs}ms (retries: ${result.retryAttempts})`,
           rowCount: 0,
           elapsedMs: result.elapsedMs,
+          retryAttempts: result.retryAttempts,
         },
       }));
     } else if (result.error) {
@@ -122,6 +205,7 @@ export default function HealthCheck() {
           error: result.error,
           rowCount: 0,
           elapsedMs: result.elapsedMs,
+          retryAttempts: result.retryAttempts,
         },
       }));
     } else {
@@ -134,6 +218,7 @@ export default function HealthCheck() {
           error: null,
           rowCount: Array.isArray(result.data) ? result.data.length : 0,
           elapsedMs: result.elapsedMs,
+          retryAttempts: result.retryAttempts,
         },
       }));
     }
@@ -159,12 +244,16 @@ export default function HealthCheck() {
         supabaseReady,
       },
       restPing: restPingResult,
-      authPing: authPingResult,
+      authHealth: authHealthResult,
+      session: sessionResult,
+      warmup: warmupResult,
+      tableProbes: Object.values(probeResults),
       tableTests: Object.values(results).map(r => ({
         table: r.table,
         status: r.status,
         rowCount: r.rowCount,
         elapsedMs: r.elapsedMs,
+        retryAttempts: r.retryAttempts,
         error: r.error,
       })),
     };
@@ -173,7 +262,7 @@ export default function HealthCheck() {
       setCopySuccess(true);
       setTimeout(() => setCopySuccess(false), 2000);
     });
-  }, [envStatus, restPingResult, authPingResult, results]);
+  }, [envStatus, restPingResult, authHealthResult, sessionResult, warmupResult, probeResults, results]);
 
   const allTestsPassed = TABLES_TO_TEST.every(
     (t) => results[t.name]?.status === "success"
@@ -314,6 +403,34 @@ export default function HealthCheck() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* Warmup */}
+            <div className="border rounded-lg p-4 bg-primary/5">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Zap className="h-4 w-4 text-primary" />
+                  <span className="font-medium">Warmup</span>
+                  <span className="text-xs text-muted-foreground">Pre-warm PostgREST connection</span>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={handleWarmup}
+                  disabled={!supabaseReady || isWarmingUp}
+                >
+                  {isWarmingUp ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    "Warmup"
+                  )}
+                </Button>
+              </div>
+              {warmupResult && (
+                <div className="mt-2 text-xs space-y-1">
+                  <p>REST Ping: {warmupResult.restPing?.status} ({warmupResult.restPing?.elapsedMs}ms)</p>
+                  <p>Table Probe: {warmupResult.tableProbe?.status} ({warmupResult.tableProbe?.elapsedMs}ms)</p>
+                </div>
+              )}
+            </div>
+
             {/* REST Ping */}
             <div className="border rounded-lg p-4">
               <div className="flex items-center justify-between mb-3">
@@ -361,26 +478,26 @@ export default function HealthCheck() {
               )}
             </div>
 
-            {/* Auth Ping */}
+            {/* Auth Health */}
             <div className="border rounded-lg p-4">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <Key className="h-4 w-4 text-muted-foreground" />
-                  <span className="font-medium">Auth Ping</span>
-                  <span className="text-xs text-muted-foreground font-mono">/auth/v1/user</span>
+                  <span className="font-medium">Auth Health</span>
+                  <span className="text-xs text-muted-foreground font-mono">/auth/v1/health</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  {authPingResult && (
+                  {authHealthResult && (
                     <span className="text-xs text-muted-foreground flex items-center gap-1">
                       <Clock className="h-3 w-3" />
-                      {authPingResult.elapsedMs}ms
+                      {authHealthResult.elapsedMs}ms
                     </span>
                   )}
-                  {renderStatusBadge(authPingResult)}
+                  {renderStatusBadge(authHealthResult)}
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={handleAuthPing}
+                    onClick={handleAuthHealth}
                     disabled={!supabaseReady || isPingingAuth}
                   >
                     {isPingingAuth ? (
@@ -391,35 +508,163 @@ export default function HealthCheck() {
                   </Button>
                 </div>
               </div>
-              {authPingResult && (
+              {authHealthResult && (
                 <div className="mt-2">
-                  {getStatusHint(authPingResult.status, authPingResult.error) && (
+                  {getStatusHint(authHealthResult.status, authHealthResult.error) && (
                     <div className="flex items-start gap-2 p-2 bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-800 rounded mb-2">
                       <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400 shrink-0 mt-0.5" />
                       <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                        {getStatusHint(authPingResult.status, authPingResult.error)}
+                        {getStatusHint(authHealthResult.status, authHealthResult.error)}
                       </p>
                     </div>
                   )}
                   <pre className="text-xs bg-muted p-2 rounded overflow-x-auto max-h-32">
-                    {authPingResult.text || "(empty response)"}
+                    {authHealthResult.text || "(empty response)"}
                   </pre>
+                </div>
+              )}
+            </div>
+
+            {/* Auth Session */}
+            <div className="border rounded-lg p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <User className="h-4 w-4 text-muted-foreground" />
+                  <span className="font-medium">Auth Session</span>
+                  <span className="text-xs text-muted-foreground">Local session check (no HTTP)</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {sessionResult && (
+                    <Badge variant={sessionResult.hasSession ? "default" : "secondary"}>
+                      {sessionResult.hasSession ? "LOGGED IN" : "NO SESSION"}
+                    </Badge>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleSessionCheck}
+                    disabled={!supabaseReady || isCheckingSession}
+                  >
+                    {isCheckingSession ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      "Check"
+                    )}
+                  </Button>
+                </div>
+              </div>
+              {sessionResult && (
+                <div className="mt-2 text-xs">
+                  {sessionResult.hasSession ? (
+                    <div className="space-y-1">
+                      <p>User ID: <span className="font-mono">{sessionResult.userId}</span></p>
+                      <p>Expires: {sessionResult.expiresAt ? new Date(sessionResult.expiresAt * 1000).toLocaleString() : 'N/A'}</p>
+                    </div>
+                  ) : (
+                    <p className="text-muted-foreground">No active session. Login required to access protected resources.</p>
+                  )}
+                  {sessionResult.error && (
+                    <p className="text-destructive mt-1">{sessionResult.error}</p>
+                  )}
                 </div>
               )}
             </div>
           </CardContent>
         </Card>
 
-        {/* Section C: Database Tests */}
+        {/* Section C: Direct REST Table Probes */}
+        <Card className="mb-6">
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Server className="h-5 w-5" />
+                Section C: REST Table Probes
+              </CardTitle>
+              <CardDescription>
+                Direct HTTP requests to tables (reveals real status codes)
+              </CardDescription>
+            </div>
+            <Button
+              onClick={probeAllTables}
+              disabled={!supabaseReady || isProbingAll}
+              size="sm"
+              className="gap-2"
+            >
+              {isProbingAll ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              Probe All
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {TABLES_TO_TEST.map((table) => {
+                const probe = probeResults[table.name];
+                return (
+                  <div
+                    key={`probe-${table.name}`}
+                    className="flex items-center justify-between p-3 bg-muted rounded-lg"
+                  >
+                    <div className="flex items-center gap-3">
+                      {probe?.status === "loading" && (
+                        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                      )}
+                      {probe?.status === "success" && (
+                        <CheckCircle className="h-5 w-5 text-green-600" />
+                      )}
+                      {probe?.status === "error" && (
+                        <XCircle className="h-5 w-5 text-red-600" />
+                      )}
+                      {!probe && (
+                        <Server className="h-5 w-5 text-muted-foreground" />
+                      )}
+                      <div>
+                        <p className="font-medium">{table.label}</p>
+                        <p className="text-xs font-mono text-muted-foreground">
+                          /rest/v1/{table.name}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {probe?.elapsedMs > 0 && (
+                        <span className="text-xs text-muted-foreground flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          {probe.elapsedMs}ms
+                        </span>
+                      )}
+                      {probe?.httpStatus > 0 && (
+                        <Badge variant={probe.httpStatus === 200 ? "default" : "destructive"}>
+                          HTTP {probe.httpStatus}
+                        </Badge>
+                      )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => probeTable(table.name)}
+                        disabled={!supabaseReady || probe?.status === "loading"}
+                      >
+                        {probe?.status === "loading" ? "..." : "Probe"}
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Section D: Supabase-js Table Tests */}
         <Card className="mb-6">
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
               <CardTitle className="text-lg flex items-center gap-2">
                 <Database className="h-5 w-5" />
-                Section C: Table Queries
+                Section D: SDK Table Queries
               </CardTitle>
               <CardDescription>
-                Test actual database queries via Supabase SDK
+                Test via Supabase-js (30s timeout + 2 retries)
               </CardDescription>
             </div>
             <Button
@@ -433,7 +678,7 @@ export default function HealthCheck() {
               ) : (
                 <RefreshCw className="h-4 w-4" />
               )}
-              Test All Tables
+              Test All
             </Button>
           </CardHeader>
           <CardContent>
@@ -518,6 +763,9 @@ export default function HealthCheck() {
                       <span>{result.table}</span>
                       <div className="flex items-center gap-2">
                         <span className="text-xs">{result.elapsedMs}ms</span>
+                        {result.retryAttempts !== undefined && result.retryAttempts > 0 && (
+                          <span className="text-xs">(retries: {result.retryAttempts})</span>
+                        )}
                         <Badge
                           variant={result.status === "success" ? "default" : "destructive"}
                         >
@@ -537,7 +785,7 @@ export default function HealthCheck() {
                           <p className="text-sm text-destructive font-medium">{result.error}</p>
                           {result.status === "timeout" && (
                             <p className="text-xs text-muted-foreground mt-2">
-                              The request was aborted due to timeout. Try running REST Ping above to check network connectivity.
+                              The request was aborted. Run "REST Probe" above to see the actual HTTP status.
                             </p>
                           )}
                         </div>
@@ -553,11 +801,11 @@ export default function HealthCheck() {
         <div className="mt-8 p-4 bg-muted/50 rounded-lg text-sm text-muted-foreground">
           <p className="font-semibold mb-2">Troubleshooting Guide:</p>
           <ul className="list-disc list-inside space-y-1">
-            <li><strong>REST Ping returns 401/403:</strong> API key is invalid or disabled</li>
-            <li><strong>REST Ping returns 404:</strong> Project URL is incorrect</li>
-            <li><strong>REST Ping shows NETWORK_ERROR:</strong> CORS blocked or URL unreachable</li>
-            <li><strong>Tables timeout but REST Ping works:</strong> RLS policies may be blocking</li>
-            <li><strong>Env vars show MISSING:</strong> Hard refresh (Ctrl+Shift+R) or rebuild preview</li>
+            <li><strong>REST Probe returns 200:</strong> Tables are accessible via REST API</li>
+            <li><strong>REST Probe returns 401/403:</strong> API key invalid or RLS blocking</li>
+            <li><strong>REST Probe returns 404:</strong> Table doesn't exist or schema not exposed</li>
+            <li><strong>SDK Test times out but REST Probe works:</strong> Client-side issue or network</li>
+            <li><strong>Warmup helps:</strong> PostgREST was cold-starting, now warmed up</li>
           </ul>
         </div>
       </div>
