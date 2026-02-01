@@ -101,34 +101,50 @@ function LoadingScreen() {
   );
 }
 
-// Protected Route wrapper - validates server-side session
+// Protected Route wrapper - validates session (not userData)
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuthStore();
   
+  // Only show loading during initial auth check
   if (isLoading) {
     return <LoadingScreen />;
   }
   
+  // Redirect to login if no session
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
   
+  // Session exists - render children (userData may still be loading)
   return <>{children}</>;
 }
 
 // Admin Route wrapper - validates admin role from database
 function AdminRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading, user } = useAuthStore();
+  const { isAuthenticated, isLoading, user, isUserDataLoading } = useAuthStore();
   
+  // Initial auth check
   if (isLoading) {
     return <LoadingScreen />;
   }
   
+  // No session - redirect to login
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
   
+  // User data still loading - show loading (we need to verify admin status)
+  if (isUserDataLoading) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-background gap-4">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <p className="text-muted-foreground text-sm">Checking permissions...</p>
+      </div>
+    );
+  }
+  
   // Admin check comes from database via has_role() function
+  // If userData failed to load or user is not admin, redirect to dashboard
   if (!user?.isAdmin) {
     return <Navigate to="/dashboard" replace />;
   }
@@ -144,6 +160,7 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
     return <LoadingScreen />;
   }
   
+  // Redirect authenticated users to dashboard
   if (isAuthenticated) {
     return <Navigate to="/dashboard" replace />;
   }

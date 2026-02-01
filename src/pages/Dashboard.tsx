@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RiskBadge } from "@/components/RiskBadge";
 import { DisclaimerBanner } from "@/components/DisclaimerBanner";
+import { UserDataBanner } from "@/components/UserDataBanner";
 import { LastUpdated } from "@/components/LastUpdated";
 import {
   generateFundingRates,
@@ -248,6 +249,7 @@ export default function Dashboard() {
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-6">
+        <UserDataBanner />
         <DisclaimerBanner />
         
         {/* No Real Data Warning */}

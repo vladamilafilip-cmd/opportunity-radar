@@ -1892,6 +1892,7 @@ export type Database = {
     }
     Functions: {
       annualize_8h_rate: { Args: { rate_8h: number }; Returns: number }
+      bootstrap_user: { Args: never; Returns: Json }
       calc_liquidity_score: { Args: { spread_bps: number }; Returns: number }
       calc_profit_score: { Args: { net_edge_bps: number }; Returns: number }
       cleanup_engine_data: { Args: never; Returns: undefined }
