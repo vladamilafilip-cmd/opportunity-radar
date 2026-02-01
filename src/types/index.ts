@@ -1,15 +1,16 @@
+// Plan type - matches database plan_tier enum
+export type Plan = 'free' | 'pro' | 'elite' | 'team';
+
 // User & Auth Types
 export interface User {
   id: string;
   email: string;
-  name: string;
+  name: string | null;
   plan: Plan;
   isAdmin: boolean;
   createdAt: string;
   isActive: boolean;
 }
-
-export type Plan = 'free' | 'pro' | 'pro_plus' | 'full';
 
 export interface AuthState {
   user: User | null;

@@ -1,49 +1,123 @@
-import { useState } from "react";
-import { Link, Navigate } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import { useAuthStore } from "@/store/authStore";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { generateAdminUsers } from "@/lib/mockData";
-import { ArrowLeft, Users, ShieldCheck, UserX, Gift } from "lucide-react";
+import { ArrowLeft, Users, ShieldCheck, Gift, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Switch } from "@/components/ui/switch";
+
+interface AdminUser {
+  id: string;
+  user_id: string;
+  email: string;
+  display_name: string | null;
+  plan: string;
+  subscriptionStatus: string;
+  isActive: boolean;
+  created_at: string;
+}
 
 export default function AdminPage() {
   const { user } = useAuthStore();
   const { toast } = useToast();
-  const [users, setUsers] = useState(generateAdminUsers());
+  const [users, setUsers] = useState<AdminUser[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Redirect non-admin users
-  if (!user?.isAdmin) {
-    return <Navigate to="/dashboard" replace />;
-  }
+  // Note: Admin access is already enforced by AdminRoute wrapper in App.tsx
+  // which checks the has_role() database function
 
-  const handleToggleActive = (userId: string) => {
-    setUsers(users.map(u => 
-      u.id === userId ? { ...u, isActive: !u.isActive } : u
-    ));
-    toast({
-      title: "User Updated",
-      description: "User status has been changed.",
-    });
+  useEffect(() => {
+    fetchUsers();
+  }, []);
+
+  const fetchUsers = async () => {
+    try {
+      // Fetch profiles with subscription info
+      const { data: profiles, error: profilesError } = await supabase
+        .from('profiles')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (profilesError) throw profilesError;
+
+      // Fetch subscriptions
+      const { data: subscriptions, error: subsError } = await supabase
+        .from('subscriptions')
+        .select('user_id, status, plan_id, plans(tier)');
+
+      if (subsError) throw subsError;
+
+      const usersData: AdminUser[] = (profiles || []).map(profile => {
+        const sub = subscriptions?.find(s => s.user_id === profile.user_id);
+        return {
+          id: profile.id,
+          user_id: profile.user_id,
+          email: profile.email,
+          display_name: profile.display_name,
+          plan: (sub?.plans as any)?.tier || 'free',
+          subscriptionStatus: sub?.status || 'inactive',
+          isActive: sub?.status === 'active',
+          created_at: profile.created_at,
+        };
+      });
+
+      setUsers(usersData);
+    } catch (error) {
+      console.error('Error fetching users:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load users.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleGrantFree = (userId: string) => {
-    setUsers(users.map(u => 
-      u.id === userId ? { ...u, plan: 'free' } : u
-    ));
-    toast({
-      title: "Free Plan Granted",
-      description: "User has been marked as one of the first 50 free users.",
-    });
+  const handleToggleActive = async (userId: string, currentStatus: boolean) => {
+    try {
+      const newStatus = currentStatus ? 'inactive' : 'active';
+      const { error } = await supabase
+        .from('subscriptions')
+        .update({ status: newStatus })
+        .eq('user_id', userId);
+
+      if (error) throw error;
+
+      setUsers(users.map(u => 
+        u.user_id === userId ? { ...u, isActive: !currentStatus, subscriptionStatus: newStatus } : u
+      ));
+      
+      toast({
+        title: "User Updated",
+        description: "User status has been changed.",
+      });
+    } catch (error) {
+      console.error('Error updating user:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update user status.",
+        variant: "destructive",
+      });
+    }
   };
 
   const totalUsers = users.length;
   const activeUsers = users.filter(u => u.isActive).length;
   const proUsers = users.filter(u => u.plan !== 'free').length;
-  const freeSlots = 50 - users.filter(u => u.plan === 'free').length;
+  const freeSlots = Math.max(0, 50 - users.filter(u => u.plan === 'free').length);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -134,10 +208,8 @@ export default function AdminPage() {
                   <TableHead>User</TableHead>
                   <TableHead>Plan</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Trades</TableHead>
-                  <TableHead>Last Login</TableHead>
+                  <TableHead>Created</TableHead>
                   <TableHead>Active</TableHead>
-                  <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -145,12 +217,12 @@ export default function AdminPage() {
                   <TableRow key={u.id}>
                     <TableCell>
                       <div>
-                        <p className="font-medium">{u.name}</p>
+                        <p className="font-medium">{u.display_name || 'No name'}</p>
                         <p className="text-sm text-muted-foreground">{u.email}</p>
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge variant={u.plan === 'free' ? 'secondary' : u.plan === 'full' ? 'destructive' : 'default'}>
+                      <Badge variant={u.plan === 'free' ? 'secondary' : u.plan === 'elite' ? 'destructive' : 'default'}>
                         {u.plan.toUpperCase()}
                       </Badge>
                     </TableCell>
@@ -159,30 +231,24 @@ export default function AdminPage() {
                         {u.subscriptionStatus}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-right font-mono">{u.totalTrades}</TableCell>
                     <TableCell className="text-muted-foreground">
-                      {new Date(u.lastLogin).toLocaleDateString()}
+                      {new Date(u.created_at).toLocaleDateString()}
                     </TableCell>
                     <TableCell>
                       <Switch 
                         checked={u.isActive} 
-                        onCheckedChange={() => handleToggleActive(u.id)}
+                        onCheckedChange={() => handleToggleActive(u.user_id, u.isActive)}
                       />
-                    </TableCell>
-                    <TableCell>
-                      {u.plan !== 'free' && freeSlots > 0 && (
-                        <Button 
-                          size="sm" 
-                          variant="outline"
-                          onClick={() => handleGrantFree(u.id)}
-                        >
-                          <Gift className="h-3 w-3 mr-1" />
-                          Grant Free
-                        </Button>
-                      )}
                     </TableCell>
                   </TableRow>
                 ))}
+                {users.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                      No users found
+                    </TableCell>
+                  </TableRow>
+                )}
               </TableBody>
             </Table>
           </CardContent>

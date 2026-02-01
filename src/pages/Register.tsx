@@ -20,6 +20,15 @@ export default function RegisterPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    if (!name.trim() || !email.trim() || !password) {
+      toast({
+        title: "Missing fields",
+        description: "Please fill in all required fields.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     if (password !== confirmPassword) {
       toast({
         title: "Passwords don't match",
@@ -28,19 +37,37 @@ export default function RegisterPage() {
       });
       return;
     }
-    
-    const success = await register(email, password, name);
-    
-    if (success) {
+
+    if (password.length < 6) {
       toast({
-        title: "Account created!",
-        description: "Welcome to IQ200 RADAR. You're on the FREE plan.",
+        title: "Password too short",
+        description: "Password must be at least 6 characters.",
+        variant: "destructive",
       });
-      navigate("/dashboard");
+      return;
+    }
+    
+    const result = await register(email, password, name);
+    
+    if (result.success) {
+      if (result.error) {
+        // Email confirmation required
+        toast({
+          title: "Check your email",
+          description: result.error,
+        });
+        navigate("/login");
+      } else {
+        toast({
+          title: "Account created!",
+          description: "Welcome to IQ200 RADAR. You're on the FREE plan.",
+        });
+        navigate("/dashboard");
+      }
     } else {
       toast({
         title: "Registration failed",
-        description: "Something went wrong. Please try again.",
+        description: result.error || "Something went wrong. Please try again.",
         variant: "destructive",
       });
     }
@@ -71,6 +98,8 @@ export default function RegisterPage() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
+                autoComplete="name"
+                maxLength={100}
               />
             </div>
             <div className="space-y-2">
@@ -82,6 +111,8 @@ export default function RegisterPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
+                autoComplete="email"
+                maxLength={255}
               />
             </div>
             <div className="space-y-2">
@@ -93,6 +124,7 @@ export default function RegisterPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                autoComplete="new-password"
                 minLength={6}
               />
             </div>
@@ -105,6 +137,7 @@ export default function RegisterPage() {
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
+                autoComplete="new-password"
               />
             </div>
           </CardContent>

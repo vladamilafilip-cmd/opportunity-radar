@@ -329,7 +329,7 @@ export const generateTradingStats = (): TradingStats => {
   };
 };
 
-// Plan Details
+// Plan Details - matching database plan_tier enum: 'free' | 'pro' | 'elite' | 'team'
 export const PLAN_DETAILS: PlanDetails[] = [
   {
     id: 'free',
@@ -361,8 +361,8 @@ export const PLAN_DETAILS: PlanDetails[] = [
     isPopular: true,
   },
   {
-    id: 'pro_plus',
-    name: 'PRO+',
+    id: 'elite',
+    name: 'ELITE',
     price: 50,
     currency: 'GBP',
     features: [
@@ -375,12 +375,12 @@ export const PLAN_DETAILS: PlanDetails[] = [
     ],
   },
   {
-    id: 'full',
-    name: 'FULL',
+    id: 'team',
+    name: 'TEAM',
     price: 100,
     currency: 'GBP',
     features: [
-      'Everything in PRO+',
+      'Everything in ELITE',
       'API access',
       'Custom alerts',
       'White-label option',
@@ -389,7 +389,7 @@ export const PLAN_DETAILS: PlanDetails[] = [
   },
 ];
 
-// Mock Admin Users
+// Mock Admin Users - matching database plan_tier enum
 export const generateAdminUsers = (): AdminUser[] => {
   return [
     {
@@ -420,7 +420,7 @@ export const generateAdminUsers = (): AdminUser[] => {
       id: 'user-3',
       email: 'admin@iq200.com',
       name: 'Admin User',
-      plan: 'full',
+      plan: 'team',
       isAdmin: true,
       createdAt: new Date(Date.now() - 86400000 * 90).toISOString(),
       isActive: true,
