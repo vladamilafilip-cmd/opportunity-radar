@@ -187,8 +187,8 @@ export const generateFundingRates = (): FundingRate[] => {
 export const generateFundingArbitrage = (): FundingArbitrage[] => {
   const opportunities: FundingArbitrage[] = [];
   
-  // Generate more opportunities (50 total across all risk levels)
-  for (let i = 0; i < 50; i++) {
+  // Generate more opportunities (100 total - focus on high-risk/high-reward)
+  for (let i = 0; i < 100; i++) {
     const symbol = SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)];
     const symbolRisk = getSymbolRiskLevel(symbol);
     const isMeme = isMemeCoin(symbol);
@@ -249,8 +249,8 @@ export const generateFundingArbitrage = (): FundingArbitrage[] => {
 export const generatePriceArbitrage = (): PriceArbitrage[] => {
   const opportunities: PriceArbitrage[] = [];
   
-  // More opportunities (40 total)
-  for (let i = 0; i < 40; i++) {
+  // More opportunities (80 total - more high-risk pairs)
+  for (let i = 0; i < 80; i++) {
     const symbol = SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)];
     const symbolRisk = getSymbolRiskLevel(symbol);
     const isMeme = isMemeCoin(symbol);
