@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/store/authStore";
+import { useTradingStore } from "@/store/tradingStore";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,6 +14,7 @@ import { DisclaimerBanner } from "@/components/DisclaimerBanner";
 import { UserDataBanner } from "@/components/UserDataBanner";
 import { LastUpdated } from "@/components/LastUpdated";
 import { ProductTourWrapper } from "@/components/ProductTour";
+import { PnLDisplay } from "@/components/PnLDisplay";
 import {
   generateFundingRates,
   generateFundingArbitrage,
@@ -44,7 +46,9 @@ import {
   AlertCircle,
   Calculator,
   AlertTriangle,
-  HelpCircle
+  HelpCircle,
+  Wallet,
+  TrendingDown
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -59,6 +63,7 @@ type DataSource = "live" | "mock" | "mixed";
 
 export default function Dashboard() {
   const { user, logout } = useAuthStore();
+  const { positions, stats, refreshPositions } = useTradingStore();
   const navigate = useNavigate();
   const [lastUpdate, setLastUpdate] = useState(new Date());
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -160,8 +165,15 @@ export default function Dashboard() {
 
     // Auto-refresh every 30 seconds
     const interval = setInterval(fetchRealData, 30000);
-    return () => clearInterval(interval);
-  }, [fetchRealData]);
+    
+    // Auto-refresh positions every 5 seconds for live PnL
+    const positionsInterval = setInterval(refreshPositions, 5000);
+    
+    return () => {
+      clearInterval(interval);
+      clearInterval(positionsInterval);
+    };
+  }, [fetchRealData, refreshPositions]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -392,6 +404,84 @@ export default function Dashboard() {
             <p className="text-xs text-muted-foreground">
               Profit Estimate: ${investmentAmount.toLocaleString()} × {getPeriodMultiplier(selectedPeriod)}x period × {leverage}x leverage
             </p>
+          </CardContent>
+        </Card>
+
+        {/* Portfolio PnL Summary */}
+        <Card className="mb-6 border-primary/20 bg-gradient-to-r from-primary/5 to-transparent">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-lg">
+                <Wallet className="h-5 w-5 text-primary" />
+                Portfolio Summary
+              </div>
+              <Link to="/trading">
+                <Button variant="outline" size="sm" className="gap-2">
+                  <LineChart className="h-4 w-4" />
+                  View Positions
+                </Button>
+              </Link>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {/* Open Positions */}
+              <div className="p-3 rounded-lg bg-background border">
+                <p className="text-xs text-muted-foreground mb-1">Open Positions</p>
+                <p className="text-2xl font-bold">{positions.length}</p>
+              </div>
+              
+              {/* Unrealized PnL */}
+              <div className="p-3 rounded-lg bg-background border">
+                <p className="text-xs text-muted-foreground mb-1">Unrealized P&L</p>
+                {positions.length > 0 ? (
+                  <PnLDisplay 
+                    value={positions.reduce((sum, p) => sum + p.unrealizedPnl, 0)} 
+                    percent={positions.reduce((sum, p) => sum + p.unrealizedPnlPercent, 0) / positions.length}
+                    size="lg" 
+                  />
+                ) : (
+                  <p className="text-2xl font-bold text-muted-foreground">$0.00</p>
+                )}
+              </div>
+              
+              {/* Realized PnL */}
+              <div className="p-3 rounded-lg bg-background border">
+                <p className="text-xs text-muted-foreground mb-1">Realized P&L</p>
+                <PnLDisplay value={stats.totalPnl} percent={stats.totalPnlPercent} size="lg" />
+              </div>
+              
+              {/* Win Rate */}
+              <div className="p-3 rounded-lg bg-background border">
+                <p className="text-xs text-muted-foreground mb-1">Win Rate</p>
+                <p className={`text-2xl font-bold ${stats.winRate >= 50 ? 'text-success' : 'text-danger'}`}>
+                  {stats.winRate.toFixed(1)}%
+                </p>
+              </div>
+            </div>
+            
+            {positions.length > 0 && (
+              <div className="mt-4 pt-4 border-t">
+                <p className="text-xs text-muted-foreground mb-2">Active Positions</p>
+                <div className="flex flex-wrap gap-2">
+                  {positions.slice(0, 5).map(pos => (
+                    <Badge 
+                      key={pos.id} 
+                      variant={pos.unrealizedPnl >= 0 ? "default" : "destructive"}
+                      className="gap-1"
+                    >
+                      {pos.symbol}
+                      <span className="font-mono text-xs">
+                        {pos.unrealizedPnl >= 0 ? '+' : ''}{pos.unrealizedPnl.toFixed(2)}
+                      </span>
+                    </Badge>
+                  ))}
+                  {positions.length > 5 && (
+                    <Badge variant="outline">+{positions.length - 5} more</Badge>
+                  )}
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
         
