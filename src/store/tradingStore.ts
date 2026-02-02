@@ -15,6 +15,7 @@ interface TradingStore {
     size: number;
   }) => Promise<void>;
   closePosition: (positionId: string) => Promise<void>;
+  closeAllPositions: () => Promise<void>;
   refreshPositions: () => void;
   accumulateProfit: (positionId: string) => void;
   takeProfitPartial: (positionId: string) => void;
@@ -93,6 +94,47 @@ export const useTradingStore = create<TradingStore>()(
             isLoading: false,
           }));
         }
+      },
+
+      closeAllPositions: async () => {
+        set({ isLoading: true });
+        
+        // Simulate API delay
+        await new Promise(resolve => setTimeout(resolve, 300));
+        
+        const openPositions = get().positions.filter(p => p.status === 'open');
+        
+        if (openPositions.length === 0) {
+          set({ isLoading: false });
+          return;
+        }
+        
+        const closedTrades: PaperTrade[] = openPositions.map(position => ({
+          id: `trade-${Date.now()}-${position.id}`,
+          symbol: position.symbol,
+          longExchange: position.longExchange,
+          shortExchange: position.shortExchange,
+          entryPrice: position.entryPrice,
+          exitPrice: position.currentPrice,
+          size: position.size,
+          realizedPnl: position.unrealizedPnl,
+          realizedPnlPercent: position.unrealizedPnlPercent,
+          openedAt: position.openedAt,
+          closedAt: new Date().toISOString(),
+        }));
+        
+        const totalPnlFromClosed = closedTrades.reduce((sum, t) => sum + t.realizedPnl, 0);
+        
+        set(state => ({
+          positions: state.positions.filter(p => p.status !== 'open'),
+          trades: [...closedTrades, ...state.trades],
+          stats: {
+            ...state.stats,
+            totalTrades: state.stats.totalTrades + closedTrades.length,
+            totalPnl: state.stats.totalPnl + totalPnlFromClosed,
+          },
+          isLoading: false,
+        }));
       },
 
       refreshPositions: () => {
