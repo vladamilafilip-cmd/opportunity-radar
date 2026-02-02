@@ -1,192 +1,226 @@
 
-# Interaktivni Demo Tour + Pravna Zastita
+# Plan: Paper Trading za sve + Više parova + Funding Interval Fix
 
-## Pregled
+## Pregled promena
 
-Implementacija interaktivnog onboarding tour-a za nove korisnike koji demonstrira vrednost platforme, uz kompletnu pravnu dokumentaciju koja stiti vlasnika od potencijalnih tuzbi.
+Tri glavne oblasti izmena:
 
----
-
-## Deo 1: Interaktivni Tour (react-joyride)
-
-### Komponente koje treba kreirati:
-
-1. **src/components/ProductTour.tsx** - Glavna tour komponenta
-   - Koristi `react-joyride` biblioteku (najpopularnija za React)
-   - Definise korake kroz kljucne feature-e
-   - Pamti u localStorage da li je korisnik vec zavrsio tour
-   - Skip/Next/Previous dugmad
-
-2. **src/hooks/useTour.ts** - Custom hook za upravljanje tour stanjem
-   - `hasSeenTour` - da li je korisnik video tour
-   - `startTour()` - pokrece tour
-   - `completeTour()` - oznacava kao zavrsen
-
-### Tour Koraci (8 koraka):
-
-| Korak | Target Element | Sadrzaj |
-|-------|---------------|---------|
-| 1 | Dobrodosli | "Dobrodosli u Diadonum! Ova platforma vam pomaze da pronadjete arbitrazne prilike na kripto trzistima." |
-| 2 | Profit Calculator | "Izracunajte potencijalnu zaradu na osnovu vase investicije i perioda." |
-| 3 | Funding Tab | "Funding Rates tab prikazuje trenutne stope finansiranja na svim berzama." |
-| 4 | Funding Arb Tab | "Ovde mozete videti mogucnosti za funding arbitrazu - long na jednoj berzi, short na drugoj." |
-| 5 | Price Arb Tab | "Price Arbitrage prikazuje cenovne razlike izmedju berzi." |
-| 6 | Risk Badge | "Svaka prilika je ocenjena po riziku: Safe, Medium ili High." |
-| 7 | Paper Trading | "Testirajte strategije sa virtualnim novcem pre nego sto rizikujete pravi kapital." |
-| 8 | Disclaimer | "VAZNO: Ovo nije finansijski savet. Trgovanje kriptovalutama nosi znacajan rizik gubitka." |
-
-### Stilizacija:
-- Spotlight efekat na aktivni element
-- Animirani overlay
-- Progress indicator
-- Mobilno responzivan
+1. **Omogući Paper Trading za sve korisnike** (ne samo PRO)
+2. **Dodaj više parova za trading** sa jasnim upozorenjima za visokorizične
+3. **Ispravi funding intervale** - podržati 1h, 4h, 8h i druge intervale
 
 ---
 
-## Deo 2: Pravna Zastita
+## Deo 1: Paper Trading za sve
 
-### Stranice koje treba kreirati:
+### Trenutno stanje
+- `Trading.tsx` blokira free korisnike (linije 17, 35-60)
+- Prikazuje "Upgrade to PRO" umesto sadržaja
 
-1. **src/pages/TermsOfService.tsx** - Uslovi koriscenja
-2. **src/pages/PrivacyPolicy.tsx** - Politika privatnosti  
-3. **src/pages/RiskDisclosure.tsx** - Detaljna izjava o riziku
-4. **src/pages/Disclaimer.tsx** - Opsta izjava o odricanju odgovornosti
+### Izmene
 
-### Sadrzaj pravnih dokumenata:
+**src/pages/Trading.tsx**
+- Ukloniti proveru `isPro` koja blokira pristup
+- Dodati "FREE MODE" badge koji naglašava da je ovo simulacija
+- Zadržati auto-refresh za sve korisnike (ne samo PRO)
 
-#### Terms of Service (kljucne tacke):
-- Platforma pruza samo INFORMACIJE, ne finansijski savet
-- Korisnik je u potpunosti odgovoran za svoje trgovinske odluke
-- Paper trading je simulacija i ne garantuje rezultate
-- Zabrana koriscenja za maloletnike
-- Geografska ogranicenja (neke jurisdikcije zabranjuju kripto)
-- Pravo na suspenziju naloga
-- Ogranicenje odgovornosti (limitation of liability)
-- Klauzula o arbitrazi sporova
-
-#### Privacy Policy:
-- Koje podatke prikupljamo (email, ime, trading istorija)
-- Kako koristimo podatke
-- Cookies i analytics
-- Prava korisnika (GDPR compliance)
-- Kontakt za brisanje podataka
-
-#### Risk Disclosure:
-- Kripto trziste je ekstremno volatilno
-- Mogucnost gubitka celokupnog kapitala
-- Leverage moze uvecati gubitke
-- Proslost nije garancija buducnosti
-- Nisu svi signali tacni
-- Tehnicke greske mogu prouzrokovati gubitke
-- Regulatorna neizvesnost
-
-### Izmene u postojecim komponentama:
-
-1. **Register.tsx** - Dodaj checkbox:
-   ```
-   [ ] Procitao sam i prihvatam Uslove Koriscenja i Politiku Privatnosti.
-       Razumem da ovo nije finansijski savet i da trgovanje nosi rizik gubitka.
-   ```
-
-2. **Landing.tsx** - Footer linkovi:
-   - Terms of Service | Privacy Policy | Risk Disclosure
-
-3. **Dashboard.tsx** - Poboljsan DisclaimerBanner:
-   - Link na detaljan Risk Disclosure
-
-4. **DisclaimerBanner.tsx** - Opsirnije upozorenje sa linkom
-
----
-
-## Deo 3: Tehnicka Implementacija
-
-### Nova zavisnost:
-```bash
-npm install react-joyride
-```
-
-### Nove rute u App.tsx:
-```typescript
-<Route path="/terms" element={<TermsOfService />} />
-<Route path="/privacy" element={<PrivacyPolicy />} />
-<Route path="/risk-disclosure" element={<RiskDisclosure />} />
-<Route path="/disclaimer" element={<Disclaimer />} />
-```
-
-### Struktura fajlova:
 ```text
-src/
-  components/
-    ProductTour.tsx (NOVO)
-    DisclaimerBanner.tsx (IZMENA - dodat link)
-  hooks/
-    useTour.ts (NOVO)
-  pages/
-    TermsOfService.tsx (NOVO)
-    PrivacyPolicy.tsx (NOVO)
-    RiskDisclosure.tsx (NOVO)
-    Disclaimer.tsx (NOVO)
-    Register.tsx (IZMENA - checkbox)
-    Landing.tsx (IZMENA - footer linkovi)
-    Dashboard.tsx (IZMENA - ProductTour integracija)
-  App.tsx (IZMENA - nove rute)
+UKLONITI:
+- const isPro = user?.plan !== 'free';
+- if (!isPro) return (...upgrade screen...)
+
+DODATI:
+- Badge "Paper Trading - Educational Mode"
+- Upozorenje: "Ovo je simulacija. Ne koristite pravi novac."
 ```
 
 ---
 
-## Deo 4: Zasto Ovo Stiti od Tuzbi
+## Deo 2: Dodaj više parova + Upozorenja
 
-### Kljucni pravni principi:
+### Trenutno stanje mockData.ts
+- 10 safe simbola
+- 10 medium simbola  
+- 15 high risk simbola
+- Ukupno: 35 simbola
 
-1. **Informed Consent (Informisani pristanak)**
-   - Korisnik MORA da cekira da razume rizike pre registracije
-   - Ne moze tvrditi da nije znao
+### Baza podataka (već ima)
+- 100+ simbola uključujući 35 meme coinova
+- Ali UI koristi mock data, ne real data
 
-2. **Educational Purpose (Obrazovna svrha)**
-   - Eksplicitno navedeno da je platforma za informativne svrhe
-   - Nije registrovani finansijski savetnik
+### Izmene
 
-3. **No Guarantees (Bez garancija)**
-   - Nigde ne obecavamo profit
-   - "Past performance does not guarantee future results"
+**src/lib/mockData.ts**
+Proširiti liste simbola da odražavaju bazu:
 
-4. **User Responsibility (Odgovornost korisnika)**
-   - Korisnik donosi odluke samostalno
-   - Platforma samo prikazuje javno dostupne podatke
+```text
+SAFE_SYMBOLS (Tier 1): 10 simbola
+- BTC, ETH, SOL, XRP, BNB, LTC, ADA, AVAX, LINK, DOT
 
-5. **Limitation of Liability (Ogranicenje odgovornosti)**
-   - Maksimalna odgovornost = placena pretplata
-   - Iskljucenje odgovornosti za indirektne gubitke
+MEDIUM_SYMBOLS (Tier 2): 25 simbola  
+- ARB, OP, SUI, APT, INJ, SEI, TIA, JUP, NEAR, ATOM
+- UNI, AAVE, FIL, ICP, MKR, LDO, FTM, CRV, SNX, RUNE
+- ALGO, EOS, HBAR, VET, XLM
 
----
+HIGH_RISK_SYMBOLS (Tier 3-4): 65 simbola
+- Gaming: AXS, GALA, IMX, GMT, ENJ
+- DeFi: DYDX, GMX, LRC, ENS, KAVA
+- Memes (35): DOGE, SHIB, PEPE, WIF, BONK, FLOKI, MEME, TURBO, BOME, SLERF, 
+  MYRO, BRETT, MOG, BABYDOGE, ELON, LADYS, AIDOGE, COQ, TOSHI, PONKE,
+  BOOK, MICHI, POPCAT, NEIRO, SUNDOG, GIGA, SPX, GOAT, FWOG, MOODENG,
+  PNUT, ACT, LUCE, CHILLGUY, HIPPO
+```
 
-## Zasto je ovo bolje od video demo-a
+**src/components/RiskBadge.tsx**
+- Dodati tooltip sa objašnjenjem rizika
+- Za HIGH tier: Dodati animaciju (pulse/glow) da privuče pažnju
 
-| Video Demo | Interaktivni Tour |
-|------------|-------------------|
-| Statican, brzo zastari | Uvek aktuelan |
-| Zahteva hosting (YouTube) | Radi lokalno |
-| Korisnik moze preskociti | Step-by-step obavezivanje |
-| Nema personalizacije | Kontekstualno |
-| Nema pravne integracije | Zavrsava na disclaimer-u |
-
----
-
-## Redosled Implementacije
-
-1. Instalacija react-joyride
-2. Kreiranje pravnih stranica (Terms, Privacy, Risk)
-3. ProductTour komponenta
-4. Integracija u Dashboard
-5. Checkbox na registraciji
-6. Footer linkovi na Landing
-7. Testiranje celog flow-a
+**src/pages/Dashboard.tsx**
+- Za meme coinove: Dodati "EXTREME RISK" banner
+- Prikazati volatility_multiplier ako je > 2.0
+- Sortirati po riziku (safe first)
 
 ---
 
-## Napomena
+## Deo 3: Fix Funding Intervali
 
-Iako ova implementacija pruza solidnu pravnu osnovu, za potpunu sigurnost preporucujem konsultaciju sa advokatom specijalizovanim za:
-- FinTech regulativu
-- GDPR compliance
-- Kripto regulativu u tvojoj jurisdikciji
+### Problem
+- Kod pretpostavlja 8h za sve
+- Kraken ima 4h interval
+- dYdX i Hyperliquid imaju 1h interval
+- Ovo utiče na APY kalkulacije
+
+### Trenutna logika u `run-metrics-engine/index.ts`
+```javascript
+function getFundingInterval(exchangeCode: string, config: EngineConfig): number {
+  return config.funding_intervals[code] ?? 8; // Default 8h
+}
+```
+
+### Izmene
+
+**Baza - engine_config**
+Ažurirati `funding_intervals` konfiguraciju:
+```json
+{
+  "binance": 8,
+  "bybit": 8, 
+  "okx": 8,
+  "bitget": 8,
+  "gate": 8,
+  "kucoin": 8,
+  "htx": 8,
+  "mexc": 8,
+  "kraken": 4,
+  "deribit": 8,
+  "dydx": 1,
+  "hyperliquid": 1
+}
+```
+
+**Tabela exchanges** 
+- `kraken` već ima `funding_interval_hours: 4` ✓
+- Ali engine čita iz `engine_config`, ne iz tabele
+
+**src/pages/Dashboard.tsx**
+- Prikazati funding interval pored stope (npr. "0.01% / 4h")
+- Normalizovati prikaz na 8h ekvivalent za poređenje
+
+**UI prikaz**
+Dodati kolonu u tabeli:
+```text
+| Exchange | Symbol | Rate | Interval | 8h Equiv | Risk |
+| Kraken   | BTC    | 0.02%| 4h       | 0.04%    | Safe |
+| Binance  | BTC    | 0.03%| 8h       | 0.03%    | Safe |
+```
+
+---
+
+## Deo 4: Upozorenja za visok rizik
+
+### Novi komponent: HighRiskWarning
+
+**src/components/HighRiskWarning.tsx**
+```text
+Za simbole sa:
+- is_meme = true
+- volatility_multiplier > 2.0
+- symbol_tier = 4
+
+Prikazati banner:
+┌─────────────────────────────────────────┐
+│ ⚠️ EXTREME RISK - MEME COIN              │
+│ • Ekstremna volatilnost (3x+ normalne)  │
+│ • Mogućnost gubitka 100% kapitala       │
+│ • Niska likvidnost = veći slippage      │
+│ • NIJE preporučeno za početnike         │
+└─────────────────────────────────────────┘
+```
+
+### Izmene u tabelama
+
+**Dashboard.tsx - Funding Arb tab**
+- Dodati kolonu "Volatility" 
+- Za high risk: Crvena pozadina reda
+- Tooltip: "Ovaj par ima 3x veću volatilnost od normalnog"
+
+**Trading.tsx - Open Position**
+- Pre otvaranja pozicije na high-risk paru:
+  - Prikazati modal upozorenja
+  - Zahtevati potvrdu "Razumem rizik"
+
+---
+
+## Tehnički plan implementacije
+
+### Fajlovi za izmenu:
+
+1. **src/pages/Trading.tsx**
+   - Ukloniti isPro blokadu
+   - Dodati educational banere
+
+2. **src/lib/mockData.ts**
+   - Proširiti liste simbola
+   - Ažurirati volatility multipliers
+
+3. **src/components/RiskBadge.tsx**
+   - Dodati tooltip
+   - Animacija za HIGH
+
+4. **src/components/HighRiskWarning.tsx** (NOVO)
+   - Komponent za upozorenja
+
+5. **src/pages/Dashboard.tsx**
+   - Kolona za funding interval
+   - 8h ekvivalent prikaz
+   - Sortiranje po riziku
+
+### Baza podataka:
+
+Ažurirati `engine_config.funding_intervals`:
+```sql
+UPDATE engine_config 
+SET config_value = '{"binance":8,"bybit":8,"okx":8,"bitget":8,"gate":8,"kucoin":8,"htx":8,"mexc":8,"kraken":4,"deribit":8,"dydx":1,"hyperliquid":1}'
+WHERE config_key = 'funding_intervals';
+```
+
+---
+
+## Rezime promena
+
+| Oblast | Pre | Posle |
+|--------|-----|-------|
+| Paper Trading | Samo PRO | Svi korisnici |
+| Broj parova | ~35 mock | 100+ (svi iz baze) |
+| Funding interval | Samo 8h | 1h, 4h, 8h podržano |
+| Risk upozorenja | Badge samo | Modal + Banner + Animacija |
+| Meme coinovi | Prikazani normalno | Crveni banner + potvrda |
+
+---
+
+## Pravna zaštita (već implementirano)
+
+Postojeće disclaimere na Trading stranici pojačati:
+- "Paper trading je SAMO simulacija"
+- "Ne koristite pravi novac na osnovu ovih rezultata"
+- "Meme coinovi mogu izgubiti 90%+ vrednosti za dan"
