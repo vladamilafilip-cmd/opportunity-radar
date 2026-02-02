@@ -16,6 +16,10 @@ interface TradingStore {
   }) => Promise<void>;
   closePosition: (positionId: string) => Promise<void>;
   refreshPositions: () => void;
+  accumulateProfit: (positionId: string) => void;
+  takeProfitPartial: (positionId: string) => void;
+  accumulateAll: () => void;
+  takeProfitAll: () => void;
 }
 
 export const useTradingStore = create<TradingStore>()(
@@ -107,6 +111,102 @@ export const useTradingStore = create<TradingStore>()(
               unrealizedPnlPercent: pnlPercent,
             };
           }),
+        }));
+      },
+
+      accumulateProfit: (positionId: string) => {
+        const position = get().positions.find(p => p.id === positionId);
+        if (position && position.unrealizedPnl > 0) {
+          const profit = position.unrealizedPnl;
+          set(state => ({
+            positions: state.positions.map(p => 
+              p.id === positionId 
+                ? {
+                    ...p,
+                    size: p.size + profit,
+                    unrealizedPnl: 0,
+                    unrealizedPnlPercent: 0,
+                    entryPrice: p.currentPrice,
+                  }
+                : p
+            ),
+            stats: {
+              ...state.stats,
+              totalPnl: state.stats.totalPnl + profit,
+            }
+          }));
+        }
+      },
+
+      takeProfitPartial: (positionId: string) => {
+        const position = get().positions.find(p => p.id === positionId);
+        if (position && position.unrealizedPnl > 0) {
+          const profit = position.unrealizedPnl;
+          set(state => ({
+            positions: state.positions.map(p => 
+              p.id === positionId 
+                ? {
+                    ...p,
+                    unrealizedPnl: 0,
+                    unrealizedPnlPercent: 0,
+                    entryPrice: p.currentPrice,
+                  }
+                : p
+            ),
+            stats: {
+              ...state.stats,
+              totalPnl: state.stats.totalPnl + profit,
+            }
+          }));
+        }
+      },
+
+      accumulateAll: () => {
+        const profitablePositions = get().positions.filter(p => p.unrealizedPnl > 0);
+        if (profitablePositions.length === 0) return;
+        
+        const totalProfit = profitablePositions.reduce((sum, p) => sum + p.unrealizedPnl, 0);
+        
+        set(state => ({
+          positions: state.positions.map(p => 
+            p.unrealizedPnl > 0
+              ? {
+                  ...p,
+                  size: p.size + p.unrealizedPnl,
+                  unrealizedPnl: 0,
+                  unrealizedPnlPercent: 0,
+                  entryPrice: p.currentPrice,
+                }
+              : p
+          ),
+          stats: {
+            ...state.stats,
+            totalPnl: state.stats.totalPnl + totalProfit,
+          }
+        }));
+      },
+
+      takeProfitAll: () => {
+        const profitablePositions = get().positions.filter(p => p.unrealizedPnl > 0);
+        if (profitablePositions.length === 0) return;
+        
+        const totalProfit = profitablePositions.reduce((sum, p) => sum + p.unrealizedPnl, 0);
+        
+        set(state => ({
+          positions: state.positions.map(p => 
+            p.unrealizedPnl > 0
+              ? {
+                  ...p,
+                  unrealizedPnl: 0,
+                  unrealizedPnlPercent: 0,
+                  entryPrice: p.currentPrice,
+                }
+              : p
+          ),
+          stats: {
+            ...state.stats,
+            totalPnl: state.stats.totalPnl + totalProfit,
+          }
         }));
       },
     }),

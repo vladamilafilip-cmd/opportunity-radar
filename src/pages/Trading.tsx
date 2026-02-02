@@ -28,7 +28,7 @@ import {
 
 export default function TradingPage() {
   const { user } = useAuthStore();
-  const { positions, trades, stats, closePosition, refreshPositions, isLoading } = useTradingStore();
+  const { positions, trades, stats, closePosition, refreshPositions, isLoading, accumulateProfit, takeProfitPartial } = useTradingStore();
   const { toast } = useToast();
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
 
@@ -44,6 +44,28 @@ export default function TradingPage() {
       title: "Position Closed",
       description: "Your paper trade has been closed.",
     });
+  };
+
+  const handleAccumulate = (positionId: string) => {
+    const position = positions.find(p => p.id === positionId);
+    if (position) {
+      accumulateProfit(positionId);
+      toast({
+        title: "Profit akumuliran",
+        description: `+$${position.unrealizedPnl.toFixed(2)} reinvestirano u poziciju.`,
+      });
+    }
+  };
+
+  const handleTakeProfit = (positionId: string) => {
+    const position = positions.find(p => p.id === positionId);
+    if (position) {
+      takeProfitPartial(positionId);
+      toast({
+        title: "Profit realizovan",
+        description: `Pokupljeno $${position.unrealizedPnl.toFixed(2)} iz pozicije.`,
+      });
+    }
   };
 
   // Calculate totals
@@ -185,6 +207,8 @@ export default function TradingPage() {
                     key={pos.id}
                     position={pos}
                     onClose={handleClosePosition}
+                    onAccumulate={handleAccumulate}
+                    onTakeProfit={handleTakeProfit}
                     isLoading={isLoading}
                   />
                 ))}
