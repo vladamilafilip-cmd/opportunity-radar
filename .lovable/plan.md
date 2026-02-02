@@ -1,64 +1,192 @@
 
-# Plan: Fix Top Opportunities Calculations
+# Interaktivni Demo Tour + Pravna Zastita
 
-## Problem
+## Pregled
 
-The "Top Opportunities" table shows **0.0000%** and **+$0.00** for all entries due to a field name mismatch:
-
-| Code uses | Mock data has | Value format |
-|-----------|---------------|--------------|
-| `estimatedProfit` ❌ | `potentialReturn` ✅ | Already percentage (2.5 = 2.5%) |
+Implementacija interaktivnog onboarding tour-a za nove korisnike koji demonstrira vrednost platforme, uz kompletnu pravnu dokumentaciju koja stiti vlasnika od potencijalnih tuzbi.
 
 ---
 
-## Solution
+## Deo 1: Interaktivni Tour (react-joyride)
 
-### File: `src/pages/Dashboard.tsx`
+### Komponente koje treba kreirati:
 
-**Fix 1 - Est. Profit % Display (line 657)**
+1. **src/components/ProductTour.tsx** - Glavna tour komponenta
+   - Koristi `react-joyride` biblioteku (najpopularnija za React)
+   - Definise korake kroz kljucne feature-e
+   - Pamti u localStorage da li je korisnik vec zavrsio tour
+   - Skip/Next/Previous dugmad
 
-```typescript
-// BEFORE:
-{Number.isFinite(opp.estimatedProfit) ? `+${(opp.estimatedProfit * 100).toFixed(4)}%` : '0.0000%'}
+2. **src/hooks/useTour.ts** - Custom hook za upravljanje tour stanjem
+   - `hasSeenTour` - da li je korisnik video tour
+   - `startTour()` - pokrece tour
+   - `completeTour()` - oznacava kao zavrsen
 
-// AFTER:
-{Number.isFinite(opp.potentialReturn) ? `+${opp.potentialReturn.toFixed(4)}%` : '0.0000%'}
+### Tour Koraci (8 koraka):
+
+| Korak | Target Element | Sadrzaj |
+|-------|---------------|---------|
+| 1 | Dobrodosli | "Dobrodosli u Diadonum! Ova platforma vam pomaze da pronadjete arbitrazne prilike na kripto trzistima." |
+| 2 | Profit Calculator | "Izracunajte potencijalnu zaradu na osnovu vase investicije i perioda." |
+| 3 | Funding Tab | "Funding Rates tab prikazuje trenutne stope finansiranja na svim berzama." |
+| 4 | Funding Arb Tab | "Ovde mozete videti mogucnosti za funding arbitrazu - long na jednoj berzi, short na drugoj." |
+| 5 | Price Arb Tab | "Price Arbitrage prikazuje cenovne razlike izmedju berzi." |
+| 6 | Risk Badge | "Svaka prilika je ocenjena po riziku: Safe, Medium ili High." |
+| 7 | Paper Trading | "Testirajte strategije sa virtualnim novcem pre nego sto rizikujete pravi kapital." |
+| 8 | Disclaimer | "VAZNO: Ovo nije finansijski savet. Trgovanje kriptovalutama nosi znacajan rizik gubitka." |
+
+### Stilizacija:
+- Spotlight efekat na aktivni element
+- Animirani overlay
+- Progress indicator
+- Mobilno responzivan
+
+---
+
+## Deo 2: Pravna Zastita
+
+### Stranice koje treba kreirati:
+
+1. **src/pages/TermsOfService.tsx** - Uslovi koriscenja
+2. **src/pages/PrivacyPolicy.tsx** - Politika privatnosti  
+3. **src/pages/RiskDisclosure.tsx** - Detaljna izjava o riziku
+4. **src/pages/Disclaimer.tsx** - Opsta izjava o odricanju odgovornosti
+
+### Sadrzaj pravnih dokumenata:
+
+#### Terms of Service (kljucne tacke):
+- Platforma pruza samo INFORMACIJE, ne finansijski savet
+- Korisnik je u potpunosti odgovoran za svoje trgovinske odluke
+- Paper trading je simulacija i ne garantuje rezultate
+- Zabrana koriscenja za maloletnike
+- Geografska ogranicenja (neke jurisdikcije zabranjuju kripto)
+- Pravo na suspenziju naloga
+- Ogranicenje odgovornosti (limitation of liability)
+- Klauzula o arbitrazi sporova
+
+#### Privacy Policy:
+- Koje podatke prikupljamo (email, ime, trading istorija)
+- Kako koristimo podatke
+- Cookies i analytics
+- Prava korisnika (GDPR compliance)
+- Kontakt za brisanje podataka
+
+#### Risk Disclosure:
+- Kripto trziste je ekstremno volatilno
+- Mogucnost gubitka celokupnog kapitala
+- Leverage moze uvecati gubitke
+- Proslost nije garancija buducnosti
+- Nisu svi signali tacni
+- Tehnicke greske mogu prouzrokovati gubitke
+- Regulatorna neizvesnost
+
+### Izmene u postojecim komponentama:
+
+1. **Register.tsx** - Dodaj checkbox:
+   ```
+   [ ] Procitao sam i prihvatam Uslove Koriscenja i Politiku Privatnosti.
+       Razumem da ovo nije finansijski savet i da trgovanje nosi rizik gubitka.
+   ```
+
+2. **Landing.tsx** - Footer linkovi:
+   - Terms of Service | Privacy Policy | Risk Disclosure
+
+3. **Dashboard.tsx** - Poboljsan DisclaimerBanner:
+   - Link na detaljan Risk Disclosure
+
+4. **DisclaimerBanner.tsx** - Opsirnije upozorenje sa linkom
+
+---
+
+## Deo 3: Tehnicka Implementacija
+
+### Nova zavisnost:
+```bash
+npm install react-joyride
 ```
 
-- Use `potentialReturn` instead of `estimatedProfit`
-- Remove `* 100` since value is already a percentage
-
-**Fix 2 - Est. Profit $ Calculation (line 663)**
-
+### Nove rute u App.tsx:
 ```typescript
-// BEFORE:
-{formatProfitAbsolute(opp.estimatedProfit || 0)}
-
-// AFTER:
-{formatProfitAbsolute((opp.potentialReturn || 0) / 100)}
+<Route path="/terms" element={<TermsOfService />} />
+<Route path="/privacy" element={<PrivacyPolicy />} />
+<Route path="/risk-disclosure" element={<RiskDisclosure />} />
+<Route path="/disclaimer" element={<Disclaimer />} />
 ```
 
-- Use `potentialReturn` and divide by 100 to convert from percentage to decimal
-
----
-
-## Summary
-
-| Line | Before | After |
-|------|--------|-------|
-| 657 | `opp.estimatedProfit * 100` | `opp.potentialReturn` (already %) |
-| 663 | `opp.estimatedProfit` | `opp.potentialReturn / 100` |
-
----
-
-## Expected Result
-
+### Struktura fajlova:
 ```text
-BEFORE:
-MYRO/USDT   price    0.0000%   8   +$0.00    606   SAFE
-MEME/USDT   price    0.0000%   8   +$0.00    398   SAFE
-
-AFTER:
-MYRO/USDT   price    +1.2345%  8   +$123.45  606   SAFE
-MEME/USDT   price    +0.8765%  8   +$87.65   398   SAFE
+src/
+  components/
+    ProductTour.tsx (NOVO)
+    DisclaimerBanner.tsx (IZMENA - dodat link)
+  hooks/
+    useTour.ts (NOVO)
+  pages/
+    TermsOfService.tsx (NOVO)
+    PrivacyPolicy.tsx (NOVO)
+    RiskDisclosure.tsx (NOVO)
+    Disclaimer.tsx (NOVO)
+    Register.tsx (IZMENA - checkbox)
+    Landing.tsx (IZMENA - footer linkovi)
+    Dashboard.tsx (IZMENA - ProductTour integracija)
+  App.tsx (IZMENA - nove rute)
 ```
+
+---
+
+## Deo 4: Zasto Ovo Stiti od Tuzbi
+
+### Kljucni pravni principi:
+
+1. **Informed Consent (Informisani pristanak)**
+   - Korisnik MORA da cekira da razume rizike pre registracije
+   - Ne moze tvrditi da nije znao
+
+2. **Educational Purpose (Obrazovna svrha)**
+   - Eksplicitno navedeno da je platforma za informativne svrhe
+   - Nije registrovani finansijski savetnik
+
+3. **No Guarantees (Bez garancija)**
+   - Nigde ne obecavamo profit
+   - "Past performance does not guarantee future results"
+
+4. **User Responsibility (Odgovornost korisnika)**
+   - Korisnik donosi odluke samostalno
+   - Platforma samo prikazuje javno dostupne podatke
+
+5. **Limitation of Liability (Ogranicenje odgovornosti)**
+   - Maksimalna odgovornost = placena pretplata
+   - Iskljucenje odgovornosti za indirektne gubitke
+
+---
+
+## Zasto je ovo bolje od video demo-a
+
+| Video Demo | Interaktivni Tour |
+|------------|-------------------|
+| Statican, brzo zastari | Uvek aktuelan |
+| Zahteva hosting (YouTube) | Radi lokalno |
+| Korisnik moze preskociti | Step-by-step obavezivanje |
+| Nema personalizacije | Kontekstualno |
+| Nema pravne integracije | Zavrsava na disclaimer-u |
+
+---
+
+## Redosled Implementacije
+
+1. Instalacija react-joyride
+2. Kreiranje pravnih stranica (Terms, Privacy, Risk)
+3. ProductTour komponenta
+4. Integracija u Dashboard
+5. Checkbox na registraciji
+6. Footer linkovi na Landing
+7. Testiranje celog flow-a
+
+---
+
+## Napomena
+
+Iako ova implementacija pruza solidnu pravnu osnovu, za potpunu sigurnost preporucujem konsultaciju sa advokatom specijalizovanim za:
+- FinTech regulativu
+- GDPR compliance
+- Kripto regulativu u tvojoj jurisdikciji
