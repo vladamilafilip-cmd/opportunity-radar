@@ -93,7 +93,7 @@ export function PortfolioSummary() {
   });
 
   return (
-    <Card className="border-primary/20 bg-gradient-to-br from-card to-primary/5">
+    <Card className="border-primary/20 bg-gradient-to-br from-card to-primary/5 mb-6">
       <CardHeader className="pb-2">
         <CardTitle className="flex items-center gap-2 text-lg">
           <Briefcase className="h-5 w-5 text-primary" />

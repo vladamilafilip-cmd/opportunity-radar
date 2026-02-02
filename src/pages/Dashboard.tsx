@@ -19,6 +19,7 @@ import { PortfolioSummary } from "@/components/PortfolioSummary";
 import { FundingIntervalBadge } from "@/components/FundingIntervalBadge";
 import { FundingCountdown } from "@/components/FundingCountdown";
 import { APRDisplay } from "@/components/APRDisplay";
+import { FloatingPnL } from "@/components/FloatingPnL";
 import {
   generateFundingRates,
   generateFundingArbitrage,
@@ -266,6 +267,9 @@ export default function Dashboard() {
           </div>
           
           <div className="flex items-center gap-2">
+            {/* Floating P&L Widget - Always visible */}
+            <FloatingPnL />
+            
             {/* Data Source Indicator */}
             <Badge 
               variant={dataSource === "live" ? "default" : dataSource === "mixed" ? "secondary" : "outline"}
