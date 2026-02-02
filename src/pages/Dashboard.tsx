@@ -483,9 +483,9 @@ export default function Dashboard() {
                   <CardTitle className="flex items-center gap-2">
                     <ArrowLeftRight className="h-5 w-5 text-primary" />
                     Funding Arbitrage Opportunities
-                    {realSignals.length > 0 && (
+                    {displaySignals.length > 0 && (
                       <Badge variant="outline" className="ml-2">
-                        {realSignals.length} signals
+                        {displaySignals.length} signals
                       </Badge>
                     )}
                   </CardTitle>
