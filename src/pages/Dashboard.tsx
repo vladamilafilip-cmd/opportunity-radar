@@ -12,6 +12,7 @@ import { RiskBadge } from "@/components/RiskBadge";
 import { DisclaimerBanner } from "@/components/DisclaimerBanner";
 import { UserDataBanner } from "@/components/UserDataBanner";
 import { LastUpdated } from "@/components/LastUpdated";
+import { ProductTourWrapper } from "@/components/ProductTour";
 import {
   generateFundingRates,
   generateFundingArbitrage,
@@ -42,7 +43,8 @@ import {
   Database,
   AlertCircle,
   Calculator,
-  AlertTriangle
+  AlertTriangle,
+  HelpCircle
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -51,6 +53,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useTour } from "@/hooks/useTour";
 
 type DataSource = "live" | "mock" | "mixed";
 
@@ -230,6 +233,9 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-background relative">
+      {/* Product Tour */}
+      <ProductTourWrapper />
+      
       {/* Header */}
       <header className="border-b border-border/50 sticky top-0 bg-background/95 backdrop-blur z-50">
         <div className="container mx-auto px-4 py-3 flex items-center justify-between">
@@ -272,7 +278,7 @@ export default function Dashboard() {
                   <p className="text-xs text-primary mt-1 uppercase">{user?.plan} Plan</p>
                 </div>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem asChild>
+                <DropdownMenuItem asChild data-tour="paper-trading">
                   <Link to="/trading" className="cursor-pointer">
                     <LineChart className="h-4 w-4 mr-2" />
                     Paper Trading
@@ -321,7 +327,7 @@ export default function Dashboard() {
         <DisclaimerBanner />
         
         {/* Investment Calculator */}
-        <Card className="mb-6 mt-6">
+        <Card className="mb-6 mt-6" data-tour="profit-calculator">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-lg">
               <Calculator className="h-5 w-5 text-primary" />
@@ -391,15 +397,15 @@ export default function Dashboard() {
         
         <Tabs defaultValue="funding">
           <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-grid">
-            <TabsTrigger value="funding" className="gap-2">
+            <TabsTrigger value="funding" className="gap-2" data-tour="funding-tab">
               <TrendingUp className="h-4 w-4 hidden sm:inline" />
               Funding
             </TabsTrigger>
-            <TabsTrigger value="funding-arb" className="gap-2">
+            <TabsTrigger value="funding-arb" className="gap-2" data-tour="funding-arb-tab">
               <ArrowLeftRight className="h-4 w-4 hidden sm:inline" />
               Funding Arb
             </TabsTrigger>
-            <TabsTrigger value="price-arb" className="gap-2">
+            <TabsTrigger value="price-arb" className="gap-2" data-tour="price-arb-tab">
               <LineChart className="h-4 w-4 hidden sm:inline" />
               Price Arb
             </TabsTrigger>
@@ -457,7 +463,7 @@ export default function Dashboard() {
                             <TableCell className="text-right font-mono text-muted-foreground">
                               {Number.isFinite(rate.totalCostBps) ? rate.totalCostBps.toFixed(1) : '0.0'}
                             </TableCell>
-                            <TableCell>
+                            <TableCell data-tour="risk-badge">
                               <RiskBadge tier={rate.riskTier || 'medium'} />
                             </TableCell>
                           </TableRow>

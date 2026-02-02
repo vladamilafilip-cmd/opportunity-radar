@@ -16,6 +16,10 @@ import Admin from "./pages/Admin";
 import Settings from "./pages/Settings";
 import HealthCheck from "./pages/Index";
 import NotFound from "./pages/NotFound";
+import TermsOfService from "./pages/TermsOfService";
+import PrivacyPolicy from "./pages/PrivacyPolicy";
+import RiskDisclosure from "./pages/RiskDisclosure";
+import Disclaimer from "./pages/Disclaimer";
 import { Button } from "@/components/ui/button";
 import { Loader2, AlertTriangle } from "lucide-react";
 
@@ -193,6 +197,12 @@ const App = () => (
               
               {/* Landing - NO auth wrapper, renders immediately */}
               <Route path="/" element={<Landing />} />
+              
+              {/* Legal pages - public access */}
+              <Route path="/terms" element={<TermsOfService />} />
+              <Route path="/privacy" element={<PrivacyPolicy />} />
+              <Route path="/risk-disclosure" element={<RiskDisclosure />} />
+              <Route path="/disclaimer" element={<Disclaimer />} />
               
               {/* Auth routes - wrapped in PublicRoute */}
               <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />

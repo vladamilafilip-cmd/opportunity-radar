@@ -4,6 +4,7 @@ import { useAuthStore } from "@/store/authStore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
@@ -13,6 +14,7 @@ export default function RegisterPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const { register, isLoading } = useAuthStore();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -24,6 +26,15 @@ export default function RegisterPage() {
       toast({
         title: "Missing fields",
         description: "Please fill in all required fields.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!acceptedTerms) {
+      toast({
+        title: "Terms not accepted",
+        description: "You must accept the Terms of Service and Privacy Policy to register.",
         variant: "destructive",
       });
       return;
@@ -142,9 +153,31 @@ export default function RegisterPage() {
                 autoComplete="new-password"
               />
             </div>
+            
+            {/* Legal Consent Checkbox */}
+            <div className="flex items-start gap-3 pt-2">
+              <Checkbox
+                id="acceptTerms"
+                checked={acceptedTerms}
+                onCheckedChange={(checked) => setAcceptedTerms(checked === true)}
+                className="mt-1"
+              />
+              <Label htmlFor="acceptTerms" className="text-sm leading-relaxed cursor-pointer">
+                I have read and accept the{" "}
+                <Link to="/terms" className="text-primary hover:underline" target="_blank">
+                  Terms of Service
+                </Link>{" "}
+                and{" "}
+                <Link to="/privacy" className="text-primary hover:underline" target="_blank">
+                  Privacy Policy
+                </Link>
+                . I understand that this platform provides information only, NOT financial advice, 
+                and that cryptocurrency trading involves significant risk of loss.
+              </Label>
+            </div>
           </CardContent>
           <CardFooter className="flex flex-col gap-4">
-            <Button type="submit" className="w-full" disabled={isLoading}>
+            <Button type="submit" className="w-full" disabled={isLoading || !acceptedTerms}>
               {isLoading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
