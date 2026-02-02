@@ -23,8 +23,12 @@ export interface FundingRate {
   exchange: string;
   symbol: string;
   fundingRate: number;
+  fundingInterval?: number; // hours (1, 4, 8)
+  fundingRate8hEquiv?: number; // normalized to 8h
   nextFundingTime: string;
   riskTier: RiskTier;
+  isMeme?: boolean;
+  volatilityMultiplier?: number;
 }
 
 export type RiskTier = 'safe' | 'medium' | 'high';
@@ -37,9 +41,15 @@ export interface FundingArbitrage {
   shortExchange: string;
   longFundingRate: number;
   shortFundingRate: number;
+  longFundingInterval?: number;
+  shortFundingInterval?: number;
+  longFunding8h?: number;
+  shortFunding8h?: number;
   spread: number;
   score: number;
   riskTier: RiskTier;
+  isMeme?: boolean;
+  volatilityMultiplier?: number;
 }
 
 export interface PriceArbitrage {
@@ -53,6 +63,8 @@ export interface PriceArbitrage {
   netAfterFees: number;
   score: number;
   riskTier: RiskTier;
+  isMeme?: boolean;
+  volatilityMultiplier?: number;
 }
 
 // Opportunity Types
@@ -66,6 +78,8 @@ export interface Opportunity {
   exchanges: string[];
   description: string;
   updatedAt: string;
+  isMeme?: boolean;
+  volatilityMultiplier?: number;
 }
 
 export interface OpportunityDetails extends Opportunity {
@@ -90,6 +104,7 @@ export interface ExchangeData {
   price: number;
   volume24h: number;
   fundingRate: number;
+  fundingInterval?: number;
   openInterest: number;
 }
 
