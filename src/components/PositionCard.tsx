@@ -11,7 +11,8 @@ import {
   Coins, 
   Timer,
   TrendingUp,
-  DollarSign
+  DollarSign,
+  Wallet
 } from "lucide-react";
 import type { PaperPosition } from "@/types";
 import { 
@@ -26,10 +27,12 @@ import { useState, useEffect } from "react";
 interface PositionCardProps {
   position: PaperPosition;
   onClose: (id: string) => void;
+  onAccumulate?: (id: string) => void;
+  onTakeProfit?: (id: string) => void;
   isLoading?: boolean;
 }
 
-export function PositionCard({ position, onClose, isLoading }: PositionCardProps) {
+export function PositionCard({ position, onClose, onAccumulate, onTakeProfit, isLoading }: PositionCardProps) {
   const [, setTick] = useState(0);
   
   // Force re-render every second for live updates
@@ -162,6 +165,32 @@ export function PositionCard({ position, onClose, isLoading }: PositionCardProps
             </span>
           </div>
         </div>
+        
+        {/* Profit Action Buttons */}
+        {position.unrealizedPnl > 0 && onAccumulate && onTakeProfit && (
+          <div className="flex gap-2 mt-3 pt-3 border-t border-border/50">
+            <Button 
+              size="sm" 
+              variant="outline"
+              className="flex-1 h-8 text-xs bg-success/10 text-success border-success/30 hover:bg-success/20 hover:text-success"
+              onClick={() => onAccumulate(position.id)}
+              disabled={isLoading}
+            >
+              <TrendingUp className="h-3 w-3 mr-1" />
+              Akumuliraj +${position.unrealizedPnl.toFixed(2)}
+            </Button>
+            <Button 
+              size="sm" 
+              variant="outline"
+              className="flex-1 h-8 text-xs bg-primary/10 text-primary border-primary/30 hover:bg-primary/20"
+              onClick={() => onTakeProfit(position.id)}
+              disabled={isLoading}
+            >
+              <Wallet className="h-3 w-3 mr-1" />
+              Pokupi
+            </Button>
+          </div>
+        )}
         
         {/* Entry Price Info */}
         <div className="mt-3 pt-3 border-t border-border/50 flex items-center justify-between text-xs text-muted-foreground">
