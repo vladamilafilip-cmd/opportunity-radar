@@ -12,7 +12,7 @@ import type {
   RiskTier,
 } from '@/types';
 
-// Helper functions
+import { calculateAPR, getNextFundingTime } from './fundingUtils';
 const randomBetween = (min: number, max: number) => Math.random() * (max - min) + min;
 const randomRiskTier = (): RiskTier => {
   const rand = Math.random();
@@ -233,6 +233,16 @@ export const generateFundingArbitrage = (): FundingArbitrage[] => {
     const short8h = normalizeTo8h(shortFundingRate, shortInterval);
     const spread = short8h - long8h;
     
+    // Calculate APR and net profit
+    const minInterval = Math.min(longInterval, shortInterval);
+    const apr = calculateAPR(spread, minInterval);
+    const netProfitPer8h = spread * 10000 / 100; // For $10,000 position
+    const totalFeeBps = 8; // 4 bps per side
+    
+    // Get next funding time (use shorter interval exchange)
+    const nextExchange = longInterval <= shortInterval ? longExchange : shortExchange;
+    const nextFundingTime = getNextFundingTime(nextExchange).toISOString();
+    
     opportunities.push({
       id: `fa-${i}`,
       symbol,
@@ -249,6 +259,11 @@ export const generateFundingArbitrage = (): FundingArbitrage[] => {
       riskTier: symbolRisk,
       isMeme,
       volatilityMultiplier: getVolatilityMultiplier(symbol),
+      // Enhanced fields
+      apr,
+      netProfitPer8h,
+      nextFundingTime,
+      totalFeeBps,
     });
   }
   
@@ -412,7 +427,7 @@ export const generateOpportunityDetails = (id: string): OpportunityDetails => {
   };
 };
 
-// Mock Paper Positions
+// Mock Paper Positions with enhanced tracking
 export const generatePaperPositions = (): PaperPosition[] => {
   return [
     {
@@ -425,26 +440,51 @@ export const generatePaperPositions = (): PaperPosition[] => {
       size: 1000,
       unrealizedPnl: 10.85,
       unrealizedPnlPercent: 1.085,
-      openedAt: new Date(Date.now() - 3600000 * 5).toISOString(),
+      openedAt: new Date(Date.now() - 3600000 * 5).toISOString(), // 5 hours ago
       status: 'open',
+      fundingCollected: 8.50,
+      longFundingInterval: 8,
+      shortFundingInterval: 8,
+      spreadPercent: 0.15,
     },
     {
       id: 'pos-2',
       symbol: 'ETH/USDT',
       longExchange: 'OKX',
-      shortExchange: 'Binance',
+      shortExchange: 'dYdX',
       entryPrice: 3450,
       currentPrice: 3420,
       size: 500,
       unrealizedPnl: -4.35,
       unrealizedPnlPercent: -0.87,
-      openedAt: new Date(Date.now() - 3600000 * 12).toISOString(),
+      openedAt: new Date(Date.now() - 3600000 * 12).toISOString(), // 12 hours ago
       status: 'open',
+      fundingCollected: 15.25,
+      longFundingInterval: 8,
+      shortFundingInterval: 1,
+      spreadPercent: 0.22,
+    },
+    {
+      id: 'pos-3',
+      symbol: 'PEPE/USDT',
+      longExchange: 'Hyperliquid',
+      shortExchange: 'Binance',
+      entryPrice: 0.0000089,
+      currentPrice: 0.0000092,
+      size: 250,
+      unrealizedPnl: 8.43,
+      unrealizedPnlPercent: 3.37,
+      openedAt: new Date(Date.now() - 3600000 * 3).toISOString(), // 3 hours ago
+      status: 'open',
+      fundingCollected: 4.80,
+      longFundingInterval: 1,
+      shortFundingInterval: 8,
+      spreadPercent: 0.45,
     },
   ];
 };
 
-// Mock Paper Trade History
+// Mock Paper Trade History with enhanced tracking
 export const generatePaperTrades = (): PaperTrade[] => {
   return [
     {
@@ -459,6 +499,8 @@ export const generatePaperTrades = (): PaperTrade[] => {
       realizedPnlPercent: 1.86,
       openedAt: new Date(Date.now() - 86400000 * 2).toISOString(),
       closedAt: new Date(Date.now() - 86400000).toISOString(),
+      fundingCollected: 3.25,
+      totalIntervals: 6,
     },
     {
       id: 'trade-2',
@@ -472,6 +514,23 @@ export const generatePaperTrades = (): PaperTrade[] => {
       realizedPnlPercent: -0.96,
       openedAt: new Date(Date.now() - 86400000 * 3).toISOString(),
       closedAt: new Date(Date.now() - 86400000 * 2).toISOString(),
+      fundingCollected: 1.80,
+      totalIntervals: 4,
+    },
+    {
+      id: 'trade-3',
+      symbol: 'DOGE/USDT',
+      longExchange: 'Hyperliquid',
+      shortExchange: 'Bybit',
+      entryPrice: 0.128,
+      exitPrice: 0.135,
+      size: 400,
+      realizedPnl: 21.88,
+      realizedPnlPercent: 5.47,
+      openedAt: new Date(Date.now() - 86400000 * 4).toISOString(),
+      closedAt: new Date(Date.now() - 86400000 * 3).toISOString(),
+      fundingCollected: 12.40,
+      totalIntervals: 18,
     },
   ];
 };

@@ -8,13 +8,29 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { PnLDisplay } from "@/components/PnLDisplay";
+import { PositionCard } from "@/components/PositionCard";
+import { PortfolioSummary } from "@/components/PortfolioSummary";
+import { FundingIntervalBadge } from "@/components/FundingIntervalBadge";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, TrendingUp, DollarSign, History, GraduationCap, AlertTriangle, Info } from "lucide-react";
+import { 
+  ArrowLeft, 
+  TrendingUp, 
+  DollarSign, 
+  History, 
+  GraduationCap, 
+  AlertTriangle, 
+  Info,
+  Coins,
+  Clock,
+  LayoutGrid,
+  LayoutList
+} from "lucide-react";
 
 export default function TradingPage() {
   const { user } = useAuthStore();
   const { positions, trades, stats, closePosition, refreshPositions, isLoading } = useTradingStore();
   const { toast } = useToast();
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
 
   // Auto-refresh positions every 5 seconds for ALL users
   useEffect(() => {
@@ -29,6 +45,10 @@ export default function TradingPage() {
       description: "Your paper trade has been closed.",
     });
   };
+
+  // Calculate totals
+  const totalFundingCollected = positions.reduce((sum, p) => sum + (p.fundingCollected || 0), 0);
+  const totalUnrealizedPnl = positions.reduce((sum, p) => sum + p.unrealizedPnl, 0);
 
   return (
     <div className="min-h-screen bg-background">
@@ -78,8 +98,13 @@ export default function TradingPage() {
           </Badge>
         </div>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        {/* Portfolio Summary */}
+        <div className="mb-6">
+          <PortfolioSummary />
+        </div>
+
+        {/* Enhanced Stats Cards */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
           <Card>
             <CardContent className="p-4">
               <p className="text-sm text-muted-foreground">Total Trades</p>
@@ -94,8 +119,17 @@ export default function TradingPage() {
           </Card>
           <Card>
             <CardContent className="p-4">
-              <p className="text-sm text-muted-foreground">Total P&L</p>
+              <p className="text-sm text-muted-foreground">Realized P&L</p>
               <PnLDisplay value={stats.totalPnl} percent={stats.totalPnlPercent} size="lg" />
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <p className="text-sm text-muted-foreground flex items-center gap-1">
+                <Coins className="h-3 w-3" />
+                Funding Collected
+              </p>
+              <p className="text-2xl font-bold text-success">+${totalFundingCollected.toFixed(2)}</p>
             </CardContent>
           </Card>
           <Card>
@@ -109,9 +143,31 @@ export default function TradingPage() {
         {/* Open Positions */}
         <Card className="mb-6">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <TrendingUp className="h-5 w-5 text-primary" />
-              Open Positions ({positions.length})
+            <CardTitle className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <TrendingUp className="h-5 w-5 text-primary" />
+                Open Positions ({positions.length})
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant={viewMode === 'cards' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setViewMode('cards')}
+                  className="gap-1"
+                >
+                  <LayoutGrid className="h-4 w-4" />
+                  Cards
+                </Button>
+                <Button
+                  variant={viewMode === 'table' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setViewMode('table')}
+                  className="gap-1"
+                >
+                  <LayoutList className="h-4 w-4" />
+                  Table
+                </Button>
+              </div>
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -121,6 +177,17 @@ export default function TradingPage() {
                 <Link to="/dashboard" className="text-primary hover:underline text-sm">
                   Find opportunities to open a trade
                 </Link>
+              </div>
+            ) : viewMode === 'cards' ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {positions.map((pos) => (
+                  <PositionCard
+                    key={pos.id}
+                    position={pos}
+                    onClose={handleClosePosition}
+                    isLoading={isLoading}
+                  />
+                ))}
               </div>
             ) : (
               <Table>
@@ -132,6 +199,7 @@ export default function TradingPage() {
                     <TableHead className="text-right">Size</TableHead>
                     <TableHead className="text-right">Entry</TableHead>
                     <TableHead className="text-right">Current</TableHead>
+                    <TableHead className="text-right">Funding</TableHead>
                     <TableHead className="text-right">P&L</TableHead>
                     <TableHead></TableHead>
                   </TableRow>
@@ -140,14 +208,27 @@ export default function TradingPage() {
                   {positions.map((pos) => (
                     <TableRow key={pos.id}>
                       <TableCell className="font-medium">{pos.symbol}</TableCell>
-                      <TableCell className="text-success">{pos.longExchange}</TableCell>
-                      <TableCell className="text-danger">{pos.shortExchange}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          <span className="text-success">{pos.longExchange}</span>
+                          <FundingIntervalBadge exchange={pos.longExchange} size="sm" />
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          <span className="text-danger">{pos.shortExchange}</span>
+                          <FundingIntervalBadge exchange={pos.shortExchange} size="sm" />
+                        </div>
+                      </TableCell>
                       <TableCell className="text-right font-mono">${pos.size}</TableCell>
                       <TableCell className="text-right font-mono">
                         ${pos.entryPrice.toLocaleString()}
                       </TableCell>
                       <TableCell className="text-right font-mono">
                         ${pos.currentPrice.toLocaleString()}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-success">
+                        +${(pos.fundingCollected || 0).toFixed(2)}
                       </TableCell>
                       <TableCell className="text-right">
                         <PnLDisplay value={pos.unrealizedPnl} percent={pos.unrealizedPnlPercent} size="sm" />
@@ -192,6 +273,7 @@ export default function TradingPage() {
                     <TableHead className="text-right">Size</TableHead>
                     <TableHead className="text-right">Entry</TableHead>
                     <TableHead className="text-right">Exit</TableHead>
+                    <TableHead className="text-right">Funding</TableHead>
                     <TableHead className="text-right">P&L</TableHead>
                     <TableHead className="text-right">Date</TableHead>
                   </TableRow>
@@ -201,9 +283,11 @@ export default function TradingPage() {
                     <TableRow key={trade.id}>
                       <TableCell className="font-medium">{trade.symbol}</TableCell>
                       <TableCell>
-                        <span className="text-success">{trade.longExchange}</span>
-                        {' / '}
-                        <span className="text-danger">{trade.shortExchange}</span>
+                        <div className="flex items-center gap-1">
+                          <span className="text-success">{trade.longExchange}</span>
+                          {' / '}
+                          <span className="text-danger">{trade.shortExchange}</span>
+                        </div>
                       </TableCell>
                       <TableCell className="text-right font-mono">${trade.size}</TableCell>
                       <TableCell className="text-right font-mono">
@@ -211,6 +295,14 @@ export default function TradingPage() {
                       </TableCell>
                       <TableCell className="text-right font-mono">
                         ${trade.exitPrice.toLocaleString()}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-success">
+                        +${(trade.fundingCollected || 0).toFixed(2)}
+                        {trade.totalIntervals && (
+                          <span className="text-muted-foreground text-xs ml-1">
+                            ({trade.totalIntervals}×)
+                          </span>
+                        )}
                       </TableCell>
                       <TableCell className="text-right">
                         <PnLDisplay value={trade.realizedPnl} percent={trade.realizedPnlPercent} size="sm" />
