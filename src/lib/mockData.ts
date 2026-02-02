@@ -468,7 +468,7 @@ export const generateTradingStats = (): TradingStats => {
   };
 };
 
-// Plan Details - matching database plan_tier enum: 'free' | 'pro' | 'elite' | 'team'
+// Plan Details - Single FREE plan with ALL features unlocked
 export const PLAN_DETAILS: PlanDetails[] = [
   {
     id: 'free',
@@ -476,54 +476,16 @@ export const PLAN_DETAILS: PlanDetails[] = [
     price: 0,
     currency: 'GBP',
     features: [
-      'Funding radar',
-      'Paper trading (educational)',
-      'All trading pairs',
-      'Limited refresh (5 min)',
-    ],
-    limitations: [
-      'Delayed data',
-    ],
-  },
-  {
-    id: 'pro',
-    name: 'PRO',
-    price: 20,
-    currency: 'GBP',
-    features: [
-      'Everything in FREE',
+      'Real-time data refresh',
+      'Funding rate radar',
       'Funding arbitrage signals',
       'Price arbitrage signals',
-      '1 minute refresh',
-      'Email support',
-    ],
-    isPopular: true,
-  },
-  {
-    id: 'elite',
-    name: 'ELITE',
-    price: 50,
-    currency: 'GBP',
-    features: [
-      'Everything in PRO',
-      'Real-time refresh',
-      'Priority ranking',
-      'Discord alerts',
-      'Telegram alerts',
-      'Priority support',
-    ],
-  },
-  {
-    id: 'team',
-    name: 'TEAM',
-    price: 100,
-    currency: 'GBP',
-    features: [
-      'Everything in ELITE',
+      'Paper trading (educational)',
+      '100+ trading pairs',
+      '40+ meme coins',
+      'Discord & Telegram alerts',
       'API access',
-      'Custom alerts',
-      'White-label option',
-      'Dedicated support',
+      'Priority support',
     ],
   },
 ];
