@@ -1,5 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { PnLDisplay } from "./PnLDisplay";
 import { 
   Briefcase, 
@@ -9,7 +10,8 @@ import {
   Clock, 
   DollarSign,
   Target,
-  Percent
+  Percent,
+  Wallet
 } from "lucide-react";
 import { useTradingStore } from "@/store/tradingStore";
 import { 
@@ -22,6 +24,7 @@ import {
 import { FundingCountdown } from "./FundingCountdown";
 import { cn } from "@/lib/utils";
 import { useEffect, useState } from "react";
+import { useToast } from "@/hooks/use-toast";
 
 interface StatCardProps {
   title: string;
@@ -45,8 +48,9 @@ function StatCard({ title, icon, children, className }: StatCardProps) {
 }
 
 export function PortfolioSummary() {
-  const { positions, stats, trades } = useTradingStore();
+  const { positions, stats, trades, accumulateAll, takeProfitAll, isLoading } = useTradingStore();
   const [, setTick] = useState(0);
+  const { toast } = useToast();
   
   // Force re-render every 5 seconds for live updates
   useEffect(() => {
@@ -59,6 +63,24 @@ export function PortfolioSummary() {
   // Calculate totals
   const totalUnrealizedPnL = openPositions.reduce((sum, p) => sum + p.unrealizedPnl, 0);
   const totalRealizedPnL = stats.totalPnl;
+  const profitableCount = openPositions.filter(p => p.unrealizedPnl > 0).length;
+  const hasProfit = totalUnrealizedPnL > 0 && profitableCount > 0;
+
+  const handleAccumulateAll = () => {
+    accumulateAll();
+    toast({
+      title: "Profit akumuliran",
+      description: `Profit iz ${profitableCount} pozicija je reinvestiran`,
+    });
+  };
+
+  const handleTakeProfitAll = () => {
+    takeProfitAll();
+    toast({
+      title: "Profit realizovan",
+      description: `Profit iz ${profitableCount} pozicija je pokupljen`,
+    });
+  };
   
   // Calculate estimated funding collected and daily income
   const fundingData = openPositions.map(pos => {
@@ -122,7 +144,33 @@ export function PortfolioSummary() {
               <TrendingDown className="h-3.5 w-3.5 text-danger" />
             }
           >
-            <PnLDisplay value={totalUnrealizedPnL} size="lg" />
+            <div className="flex items-center gap-2">
+              <PnLDisplay value={totalUnrealizedPnL} size="lg" />
+              {hasProfit && (
+                <div className="flex gap-1">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 px-1.5 text-xs bg-success/10 text-success hover:bg-success/20"
+                    onClick={handleAccumulateAll}
+                    disabled={isLoading}
+                    title="Akumuliraj"
+                  >
+                    <TrendingUp className="h-3 w-3" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 px-1.5 text-xs bg-primary/10 text-primary hover:bg-primary/20"
+                    onClick={handleTakeProfitAll}
+                    disabled={isLoading}
+                    title="Pokupi"
+                  >
+                    <Wallet className="h-3 w-3" />
+                  </Button>
+                </div>
+              )}
+            </div>
           </StatCard>
           
           <StatCard 

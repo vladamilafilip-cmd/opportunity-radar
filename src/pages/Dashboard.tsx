@@ -16,6 +16,7 @@ import { LastUpdated } from "@/components/LastUpdated";
 import { ProductTourWrapper } from "@/components/ProductTour";
 import { PnLDisplay } from "@/components/PnLDisplay";
 import { PortfolioSummary } from "@/components/PortfolioSummary";
+import { ActivePositionsWidget } from "@/components/ActivePositionsWidget";
 import { FundingIntervalBadge } from "@/components/FundingIntervalBadge";
 import { FundingCountdown } from "@/components/FundingCountdown";
 import { APRDisplay } from "@/components/APRDisplay";
@@ -418,6 +419,9 @@ export default function Dashboard() {
 
         {/* Portfolio Summary - New Enhanced Component */}
         <PortfolioSummary />
+        
+        {/* Active Positions Control Widget */}
+        <ActivePositionsWidget />
         
         <Tabs defaultValue="funding">
           <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-grid">
