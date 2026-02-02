@@ -1,226 +1,102 @@
 
-# Plan: Paper Trading za sve + Više parova + Funding Interval Fix
+# Plan: Uklanjanje pretplata - Sve je besplatno
 
-## Pregled promena
+## Pregled
 
-Tri glavne oblasti izmena:
-
-1. **Omogući Paper Trading za sve korisnike** (ne samo PRO)
-2. **Dodaj više parova za trading** sa jasnim upozorenjima za visokorizične
-3. **Ispravi funding intervale** - podržati 1h, 4h, 8h i druge intervale
+Uklanjanje celokupnog sistema pretplata i pravljenje jednog FREE plana koji ima sve funkcionalnosti. Svi korisnici dobijaju pun pristup svim alatima bez ikakvih ograničenja.
 
 ---
 
-## Deo 1: Paper Trading za sve
+## Fajlovi za izmenu
 
-### Trenutno stanje
-- `Trading.tsx` blokira free korisnike (linije 17, 35-60)
-- Prikazuje "Upgrade to PRO" umesto sadržaja
+### 1. src/lib/mockData.ts
+**Zadatak:** Zameniti 4 plana sa jednim FREE planom koji ima SVE feature-e
 
-### Izmene
-
-**src/pages/Trading.tsx**
-- Ukloniti proveru `isPro` koja blokira pristup
-- Dodati "FREE MODE" badge koji naglašava da je ovo simulacija
-- Zadržati auto-refresh za sve korisnike (ne samo PRO)
-
-```text
-UKLONITI:
-- const isPro = user?.plan !== 'free';
-- if (!isPro) return (...upgrade screen...)
-
-DODATI:
-- Badge "Paper Trading - Educational Mode"
-- Upozorenje: "Ovo je simulacija. Ne koristite pravi novac."
-```
+**Izmene:**
+- `PLAN_DETAILS` array - samo jedan plan sa svim funkcionalnostima:
+  - Real-time refresh
+  - Funding & Price arbitrage signali
+  - Paper trading
+  - 100+ trading parova (meme coins uključeni)
+  - API pristup
+  - Alertovi (Discord/Telegram)
+  - Bez ograničenja
 
 ---
 
-## Deo 2: Dodaj više parova + Upozorenja
+### 2. src/pages/Opportunity.tsx
+**Zadatak:** Ukloniti `isPro` proveru koja blokira paper trading
 
-### Trenutno stanje mockData.ts
-- 10 safe simbola
-- 10 medium simbola  
-- 15 high risk simbola
-- Ukupno: 35 simbola
-
-### Baza podataka (već ima)
-- 100+ simbola uključujući 35 meme coinova
-- Ali UI koristi mock data, ne real data
-
-### Izmene
-
-**src/lib/mockData.ts**
-Proširiti liste simbola da odražavaju bazu:
-
-```text
-SAFE_SYMBOLS (Tier 1): 10 simbola
-- BTC, ETH, SOL, XRP, BNB, LTC, ADA, AVAX, LINK, DOT
-
-MEDIUM_SYMBOLS (Tier 2): 25 simbola  
-- ARB, OP, SUI, APT, INJ, SEI, TIA, JUP, NEAR, ATOM
-- UNI, AAVE, FIL, ICP, MKR, LDO, FTM, CRV, SNX, RUNE
-- ALGO, EOS, HBAR, VET, XLM
-
-HIGH_RISK_SYMBOLS (Tier 3-4): 65 simbola
-- Gaming: AXS, GALA, IMX, GMT, ENJ
-- DeFi: DYDX, GMX, LRC, ENS, KAVA
-- Memes (35): DOGE, SHIB, PEPE, WIF, BONK, FLOKI, MEME, TURBO, BOME, SLERF, 
-  MYRO, BRETT, MOG, BABYDOGE, ELON, LADYS, AIDOGE, COQ, TOSHI, PONKE,
-  BOOK, MICHI, POPCAT, NEIRO, SUNDOG, GIGA, SPX, GOAT, FWOG, MOODENG,
-  PNUT, ACT, LUCE, CHILLGUY, HIPPO
-```
-
-**src/components/RiskBadge.tsx**
-- Dodati tooltip sa objašnjenjem rizika
-- Za HIGH tier: Dodati animaciju (pulse/glow) da privuče pažnju
-
-**src/pages/Dashboard.tsx**
-- Za meme coinove: Dodati "EXTREME RISK" banner
-- Prikazati volatility_multiplier ako je > 2.0
-- Sortirati po riziku (safe first)
+**Izmene:**
+- Linija 44: Ukloniti `const isPro = user?.plan !== 'free';`
+- Linije 46-54: Ukloniti proveru koja vraća "PRO Required" toast
+- Omogućiti svim korisnicima da otvore pozicije
 
 ---
 
-## Deo 3: Fix Funding Intervali
+### 3. src/pages/Billing.tsx
+**Zadatak:** Pojednostaviti stranicu - prikazati samo jedan FREE plan
 
-### Problem
-- Kod pretpostavlja 8h za sve
-- Kraken ima 4h interval
-- dYdX i Hyperliquid imaju 1h interval
-- Ovo utiče na APY kalkulacije
-
-### Trenutna logika u `run-metrics-engine/index.ts`
-```javascript
-function getFundingInterval(exchangeCode: string, config: EngineConfig): number {
-  return config.funding_intervals[code] ?? 8; // Default 8h
-}
-```
-
-### Izmene
-
-**Baza - engine_config**
-Ažurirati `funding_intervals` konfiguraciju:
-```json
-{
-  "binance": 8,
-  "bybit": 8, 
-  "okx": 8,
-  "bitget": 8,
-  "gate": 8,
-  "kucoin": 8,
-  "htx": 8,
-  "mexc": 8,
-  "kraken": 4,
-  "deribit": 8,
-  "dydx": 1,
-  "hyperliquid": 1
-}
-```
-
-**Tabela exchanges** 
-- `kraken` već ima `funding_interval_hours: 4` ✓
-- Ali engine čita iz `engine_config`, ne iz tabele
-
-**src/pages/Dashboard.tsx**
-- Prikazati funding interval pored stope (npr. "0.01% / 4h")
-- Normalizovati prikaz na 8h ekvivalent za poređenje
-
-**UI prikaz**
-Dodati kolonu u tabeli:
-```text
-| Exchange | Symbol | Rate | Interval | 8h Equiv | Risk |
-| Kraken   | BTC    | 0.02%| 4h       | 0.04%    | Safe |
-| Binance  | BTC    | 0.03%| 8h       | 0.03%    | Safe |
-```
+**Izmene:**
+- Ukloniti logiku za promenu planova
+- Prikazati "All Features Unlocked - Forever Free"
+- Dodati listu svih dostupnih funkcionalnosti
+- Ukloniti billing date i upgrade opcije
 
 ---
 
-## Deo 4: Upozorenja za visok rizik
+### 4. src/pages/Landing.tsx
+**Zadatak:** Ukloniti pricing sekciju sa više planova
 
-### Novi komponent: HighRiskWarning
-
-**src/components/HighRiskWarning.tsx**
-```text
-Za simbole sa:
-- is_meme = true
-- volatility_multiplier > 2.0
-- symbol_tier = 4
-
-Prikazati banner:
-┌─────────────────────────────────────────┐
-│ ⚠️ EXTREME RISK - MEME COIN              │
-│ • Ekstremna volatilnost (3x+ normalne)  │
-│ • Mogućnost gubitka 100% kapitala       │
-│ • Niska likvidnost = veći slippage      │
-│ • NIJE preporučeno za početnike         │
-└─────────────────────────────────────────┘
-```
-
-### Izmene u tabelama
-
-**Dashboard.tsx - Funding Arb tab**
-- Dodati kolonu "Volatility" 
-- Za high risk: Crvena pozadina reda
-- Tooltip: "Ovaj par ima 3x veću volatilnost od normalnog"
-
-**Trading.tsx - Open Position**
-- Pre otvaranja pozicije na high-risk paru:
-  - Prikazati modal upozorenja
-  - Zahtevati potvrdu "Razumem rizik"
+**Izmene:**
+- Zameniti pricing grid sa jednom karticom "100% FREE"
+- Lista svih besplatnih funkcionalnosti
+- Jasnija poruka: "Sve funkcionalnosti su besplatne"
 
 ---
 
-## Tehnički plan implementacije
+### 5. src/pages/Register.tsx
+**Zadatak:** Ažurirati success poruku
 
-### Fajlovi za izmenu:
+**Izmene:**
+- Linija 74: Promeniti "You're on the FREE plan" u "All features unlocked!"
 
-1. **src/pages/Trading.tsx**
-   - Ukloniti isPro blokadu
-   - Dodati educational banere
+---
 
-2. **src/lib/mockData.ts**
-   - Proširiti liste simbola
-   - Ažurirati volatility multipliers
+### 6. src/pages/Dashboard.tsx
+**Zadatak:** Ukloniti LockedFeature komponentu i plan prikaz
 
-3. **src/components/RiskBadge.tsx**
-   - Dodati tooltip
-   - Animacija za HIGH
+**Izmene:**
+- Linija 278: Promeniti "{user?.plan} Plan" u "Full Access"
+- Linije 703-713: Ukloniti `LockedFeature` komponentu (više nije potrebna)
 
-4. **src/components/HighRiskWarning.tsx** (NOVO)
-   - Komponent za upozorenja
+---
 
-5. **src/pages/Dashboard.tsx**
-   - Kolona za funding interval
-   - 8h ekvivalent prikaz
-   - Sortiranje po riziku
+### 7. src/pages/Admin.tsx
+**Zadatak:** Ažurirati admin statistike
 
-### Baza podataka:
-
-Ažurirati `engine_config.funding_intervals`:
-```sql
-UPDATE engine_config 
-SET config_value = '{"binance":8,"bybit":8,"okx":8,"bitget":8,"gate":8,"kucoin":8,"htx":8,"mexc":8,"kraken":4,"deribit":8,"dydx":1,"hyperliquid":1}'
-WHERE config_key = 'funding_intervals';
-```
+**Izmene:**
+- Linije 111-112: Ukloniti "PRO Users" i "Free Slots" metrike
+- Prikazati samo ukupan broj korisnika i aktivnih korisnika
 
 ---
 
 ## Rezime promena
 
-| Oblast | Pre | Posle |
+| Stavka | Pre | Posle |
 |--------|-----|-------|
-| Paper Trading | Samo PRO | Svi korisnici |
-| Broj parova | ~35 mock | 100+ (svi iz baze) |
-| Funding interval | Samo 8h | 1h, 4h, 8h podržano |
-| Risk upozorenja | Badge samo | Modal + Banner + Animacija |
-| Meme coinovi | Prikazani normalno | Crveni banner + potvrda |
+| Broj planova | 4 (free, pro, elite, team) | 1 (FREE) |
+| Paper trading | PRO only | Svi korisnici |
+| Funding/Price Arb | PRO only | Svi korisnici |
+| Real-time data | Elite only | Svi korisnici |
+| API pristup | Team only | Svi korisnici |
+| Alertovi | Elite+ | Svi korisnici |
+| Broj simbola | 100+ | 100+ (nepromenjeno) |
+| Meme coins | 40 dostupno | 40 dostupno (nepromenjeno) |
 
 ---
 
-## Pravna zaštita (već implementirano)
+## Napomena
 
-Postojeće disclaimere na Trading stranici pojačati:
-- "Paper trading je SAMO simulacija"
-- "Ne koristite pravi novac na osnovu ovih rezultata"
-- "Meme coinovi mogu izgubiti 90%+ vrednosti za dan"
+Baza podataka (plans tabela) ostaje nepromenjena jer frontend koristi mock data iz `mockData.ts`. Ako u budućnosti želiš da sinhronizuješ bazu, možemo ažurirati i nju.
+
