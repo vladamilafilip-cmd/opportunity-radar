@@ -1,102 +1,108 @@
-# Perfektan Dashboard - IMPLEMENTIRANO ✅
 
-## Status: Kompletno
 
-Ovaj dokument opisuje implementirane funkcionalnosti za edukativni dashboard za funding arbitrage.
+# Plan: Uvek Vidljiv P&L Indikator
 
----
+## Problem
+- `PortfolioSummary` postoji ali se gubi među ostalim karticama
+- Kada korisnik skroluje, ne vidi svoj P&L
+- Korisnik mora da traži gde je prikazan profit/gubitak
 
-## Implementirane Funkcionalnosti
+## Rešenje: Sticky P&L Bar u Headeru
 
-### 1. Funding Interval Sistem ✅
-- **src/lib/fundingUtils.ts** - Centralizovane utility funkcije
-  - `EXCHANGE_FUNDING_INTERVALS` - Mapiranje berzi na intervale (1h/4h/8h)
-  - `calculateAPR()` - Kalkulacija godišnjeg prinosa
-  - `calculateNetProfit()` - Neto profit posle fee-jeva
-  - `getNextFundingTime()` - Sledeće vreme plaćanja
-  - `formatTimeUntilFunding()` - Formatiranje countdown-a
-  - `simulateFundingCollected()` - Simulacija prikupljenog funding-a
+### Nova komponenta: Floating P&L Widget
 
-### 2. Nove Komponente ✅
+Dodajemo **mali ali upadljiv P&L indikator u header** koji je UVEK vidljiv:
 
-#### FundingIntervalBadge
-- Vizuelni badge za interval (🟢 1h, 🟡 4h, 🔵 8h)
-- Tooltip sa detaljima o broju plaćanja dnevno
-- Koristi se u tabelama za jasno označavanje
+```
+┌────────────────────────────────────────────────────────────────────────────┐
+│ [Logo] Diadonum          │ 📊 +$45.23 (2 pos) │ 🔄 Live │ [👤 User]      │
+└────────────────────────────────────────────────────────────────────────────┘
+```
 
-#### FundingCountdown
-- Real-time countdown do sledećeg funding plaćanja
-- Animacija i highlight kada ostane < 30 minuta
-- Podržava pojedinačne i višestruke berze
+Kada korisnik ima otvorene pozicije, vidi:
+- **Boju** (zelena za profit, crvena za gubitak)
+- **Ukupni unrealized P&L**
+- **Broj otvorenih pozicija**
+- **Klik vodi na /trading stranicu**
 
-#### APRDisplay
-- Prikaz godišnjeg prinosa sa tooltipom
-- Breakdown: gross profit, fees, slippage, net
-- Boje bazirane na APR vrednosti (500%+ zeleno)
+### Dodatno: Poboljšanje PortfolioSummary Vidljivosti
 
-#### PositionCard
-- Kartica sa svim detaljima pozicije
-- Vreme otvoreno, funding collected, next funding
-- Estimacija dnevnog prihoda
-- Dugme za zatvaranje
+1. Dodati veći margin i padding
+2. Dodati blagi pulse animaciju kada se P&L promeni
+3. Premestiti iznad tabova (već jeste, ali treba dodati `mb-6` razmak)
 
-#### PortfolioSummary
-- Centralizovan prikaz portfolio metrika
-- Open positions, unrealized/realized PnL
-- Funding collected, estimated daily income
-- Next funding events countdown
+## Fajlovi za Izmenu
 
-### 3. Dashboard Poboljšanja ✅
-- PortfolioSummary na vrhu stranice
-- Funding Rates tab: dodat interval badge i countdown
-- Funding Arb tab: APR kolona, interval badges, next funding
-- Profit Calculator: isti kao pre
+### 1. src/components/FloatingPnL.tsx (NOVA)
+```typescript
+// Kompaktni P&L widget za header
+- Prikazuje ukupni unrealized P&L
+- Broj otvorenih pozicija
+- Klikom vodi na /trading
+- Zelena/crvena boja zavisno od profita
+```
 
-### 4. Trading Page Poboljšanja ✅
-- PortfolioSummary komponenta
-- Toggle između Cards i Table prikaza
-- Funding Collected kolona u tabelama
-- Enhanced PositionCard sa svim detaljima
-- Trade History sa funding collected info
+### 2. src/pages/Dashboard.tsx
+```typescript
+// U header sekciji (linija ~268-282) dodati:
+<FloatingPnL />
 
-### 5. Tipovi Prošireni ✅
-- `FundingPayment` interface
-- `PaperPosition`: fundingCollected, fundingPayments, intervals
-- `PaperTrade`: fundingCollected, totalIntervals
-- `FundingArbitrage`: apr, netProfitPer8h, nextFundingTime
+// Pre DropdownMenu komponente
+```
 
----
+### 3. src/components/PortfolioSummary.tsx
+```typescript
+// Dodati margin-bottom za bolju separaciju
+// Dodati "sticky" opciju kada je na vrhu viewport-a
+// Povećati font size za P&L vrednosti
+```
+
+## Vizuelni Rezultat
+
+### Desktop Header:
+```
+[Logo] Diadonum    │ 💰 +$127.45 unrealized │ 📈 3 positions │ Live Data │ [User ▼]
+```
+
+### Mobile Header:
+```
+[Logo]  │ +$127 (3) │ [👤]
+```
+
+### PortfolioSummary (ispod headera):
+- Veći i upadljiviji prikaz
+- Razmak `mb-6` od tabova
+- Opcioni sticky režim
 
 ## Tehnički Detalji
 
-### APR Formula
+### FloatingPnL komponenta
 ```typescript
-APR = spreadPercent × (365 × 24 / intervalHours)
-// Primer: 0.60% spread na 8h = 0.60% × 1095 = 657% APR
+export function FloatingPnL() {
+  const { positions, stats } = useTradingStore();
+  const openPositions = positions.filter(p => p.status === 'open');
+  const totalPnL = openPositions.reduce((sum, p) => sum + p.unrealizedPnl, 0);
+  
+  if (openPositions.length === 0) return null; // Sakrij ako nema pozicija
+  
+  return (
+    <Link to="/trading">
+      <Badge variant={totalPnL >= 0 ? "success" : "destructive"}>
+        <Wallet className="h-3 w-3 mr-1" />
+        {totalPnL >= 0 ? '+' : ''}{totalPnL.toFixed(2)}
+        <span className="ml-1 opacity-70">({openPositions.length})</span>
+      </Badge>
+    </Link>
+  );
+}
 ```
 
-### Net Profit Formula
-```typescript
-net = gross - takerFees(8bps) - slippage(2bps)
-// $10,000 × 0.60% = $60 gross
-// Fees: $8, Slippage: $2
-// Net: $50 per 8h interval
-```
+## Očekivani Rezultat
 
-### Funding Countdown
-- Baziran na UTC vremenu
-- 8h: 00:00, 08:00, 16:00 UTC
-- 4h: 00:00, 04:00, 08:00, 12:00, 16:00, 20:00 UTC
-- 1h: Svaki pun sat
+| Element | Pre | Posle |
+|---------|-----|-------|
+| P&L u headeru | Ne postoji | Uvek vidljiv badge |
+| Vizuelna prominentnost | Gubi se | Upadljiv i uvek dostupan |
+| Mobile prikaz | Nije optimizovan | Kompaktan badge |
+| Klik akcija | Nema | Vodi na /trading |
 
----
-
-## Edukativna Poruka
-
-**Sve informacije služe edukaciji korisnika:**
-1. Razumevanje kako funding arbitrage funkcioniše
-2. Važnost različitih funding intervala
-3. Realni troškovi (fee-jevi, slippage)
-4. Optimalno vreme za ulazak u poziciju
-
-**Ovo NIJE finansijski savet. Kripto tržišta su ekstremno volatilna.**
