@@ -5,24 +5,22 @@ import { useTradingStore } from "@/store/tradingStore";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { PnLDisplay } from "@/components/PnLDisplay";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, TrendingUp, TrendingDown, DollarSign, History } from "lucide-react";
+import { ArrowLeft, TrendingUp, DollarSign, History, GraduationCap, AlertTriangle, Info } from "lucide-react";
 
 export default function TradingPage() {
   const { user } = useAuthStore();
   const { positions, trades, stats, closePosition, refreshPositions, isLoading } = useTradingStore();
   const { toast } = useToast();
-  
-  const isPro = user?.plan !== 'free';
 
-  // Auto-refresh positions every 5 seconds
+  // Auto-refresh positions every 5 seconds for ALL users
   useEffect(() => {
-    if (isPro) {
-      const interval = setInterval(refreshPositions, 5000);
-      return () => clearInterval(interval);
-    }
-  }, [isPro, refreshPositions]);
+    const interval = setInterval(refreshPositions, 5000);
+    return () => clearInterval(interval);
+  }, [refreshPositions]);
 
   const handleClosePosition = async (positionId: string) => {
     await closePosition(positionId);
@@ -32,48 +30,53 @@ export default function TradingPage() {
     });
   };
 
-  if (!isPro) {
-    return (
-      <div className="min-h-screen bg-background">
-        <header className="border-b border-border/50 sticky top-0 bg-background/95 backdrop-blur z-50">
-          <div className="container mx-auto px-4 py-3">
-            <Link to="/dashboard" className="flex items-center gap-2 text-muted-foreground hover:text-foreground">
-              <ArrowLeft className="h-4 w-4" />
-              <span>Back to Dashboard</span>
-            </Link>
-          </div>
-        </header>
-        <main className="container mx-auto px-4 py-12 text-center">
-          <div className="h-20 w-20 rounded-full bg-muted flex items-center justify-center mx-auto mb-6">
-            <DollarSign className="h-10 w-10 text-muted-foreground" />
-          </div>
-          <h1 className="text-3xl font-bold mb-4">Paper Trading</h1>
-          <p className="text-muted-foreground mb-8 max-w-md mx-auto">
-            Upgrade to PRO to access paper trading and practice arbitrage strategies without risking real capital.
-          </p>
-          <Link to="/billing">
-            <Button size="lg">Upgrade to PRO - £20/month</Button>
-          </Link>
-        </main>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="border-b border-border/50 sticky top-0 bg-background/95 backdrop-blur z-50">
-        <div className="container mx-auto px-4 py-3">
+        <div className="container mx-auto px-4 py-3 flex items-center justify-between">
           <Link to="/dashboard" className="flex items-center gap-2 text-muted-foreground hover:text-foreground">
             <ArrowLeft className="h-4 w-4" />
             <span>Back to Dashboard</span>
           </Link>
+          
+          <Badge variant="secondary" className="gap-1">
+            <GraduationCap className="h-3 w-3" />
+            Educational Mode
+          </Badge>
         </div>
       </header>
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-6">
-        <h1 className="text-3xl font-bold mb-6">Paper Trading</h1>
+        {/* Educational Banner */}
+        <Alert className="mb-6 border-primary/30 bg-primary/5">
+          <GraduationCap className="h-4 w-4" />
+          <AlertDescription className="flex items-center gap-2">
+            <span className="font-medium">Paper Trading - Simulation Only</span>
+            <span className="text-muted-foreground">•</span>
+            <span className="text-sm text-muted-foreground">
+              Ovo je simulacija za učenje. Ne koristite pravi novac na osnovu ovih rezultata.
+            </span>
+          </AlertDescription>
+        </Alert>
+
+        {/* Risk Warning */}
+        <Alert variant="destructive" className="mb-6 border-danger/30 bg-danger/5">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription className="text-sm">
+            <strong>UPOZORENJE:</strong> Paper trading ne garantuje buduće rezultate. 
+            Kripto tržišta su ekstremno volatilna. Nikada ne investirajte više nego što možete priuštiti da izgubite.
+          </AlertDescription>
+        </Alert>
+        
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-3xl font-bold">Paper Trading</h1>
+          <Badge variant="outline" className="gap-1">
+            <Info className="h-3 w-3" />
+            Simulation
+          </Badge>
+        </div>
 
         {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
