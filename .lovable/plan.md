@@ -1,108 +1,237 @@
 
-
-# Plan: Uvek Vidljiv P&L Indikator
+# Plan: Tasteri za Akumulaciju i Realizaciju Profita
 
 ## Problem
-- `PortfolioSummary` postoji ali se gubi među ostalim karticama
-- Kada korisnik skroluje, ne vidi svoj P&L
-- Korisnik mora da traži gde je prikazan profit/gubitak
+Kada je korisnik u profitu, nema opciju da:
+1. **Akumulira** - reinvestira profit u istu poziciju (compound efekat)
+2. **Primi/Pokupi** - realizuje samo profit bez zatvaranja cele pozicije (partial take profit)
 
-## Rešenje: Sticky P&L Bar u Headeru
+---
 
-### Nova komponenta: Floating P&L Widget
+## Rešenje
 
-Dodajemo **mali ali upadljiv P&L indikator u header** koji je UVEK vidljiv:
+### A. FloatingPnL - Brze akcije u headeru
+
+Kada je P&L pozitivan, pored badge-a dodajemo dva dugmeta:
 
 ```
-┌────────────────────────────────────────────────────────────────────────────┐
-│ [Logo] Diadonum          │ 📊 +$45.23 (2 pos) │ 🔄 Live │ [👤 User]      │
-└────────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│ [Logo]  │ 💰 +$45.23 (2 pos) [📈 Akumuliraj] [💵 Pokupi]  │ [👤]    │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
-Kada korisnik ima otvorene pozicije, vidi:
-- **Boju** (zelena za profit, crvena za gubitak)
-- **Ukupni unrealized P&L**
-- **Broj otvorenih pozicija**
-- **Klik vodi na /trading stranicu**
+- **Akumuliraj** - Dodaje profit na veličinu pozicije (compound)
+- **Pokupi** - Realizuje profit i resetuje P&L na nulu
 
-### Dodatno: Poboljšanje PortfolioSummary Vidljivosti
+### B. PositionCard - Akcije po poziciji
 
-1. Dodati veći margin i padding
-2. Dodati blagi pulse animaciju kada se P&L promeni
-3. Premestiti iznad tabova (već jeste, ali treba dodati `mb-6` razmak)
+Za svaku poziciju u profitu dodajemo dugmiće:
 
-## Fajlovi za Izmenu
+```
+┌──────────────────────────────────────┐
+│  PEPE/USDT            $1,000         │
+│  ...                                 │
+│  Unrealized P&L: +$25.50 (+2.55%)   │
+│                                      │
+│  [📈 Akumuliraj +$25]  [💵 Pokupi]  │
+│  [✕ Zatvori poziciju]               │
+└──────────────────────────────────────┘
+```
 
-### 1. src/components/FloatingPnL.tsx (NOVA)
+---
+
+## Tehnička Implementacija
+
+### 1. Nove akcije u tradingStore.ts
+
 ```typescript
-// Kompaktni P&L widget za header
-- Prikazuje ukupni unrealized P&L
-- Broj otvorenih pozicija
-- Klikom vodi na /trading
-- Zelena/crvena boja zavisno od profita
+interface TradingStore {
+  // Postojeće...
+  
+  // NOVE AKCIJE:
+  accumulateProfit: (positionId: string) => Promise<void>;
+  takeProfitPartial: (positionId: string) => Promise<void>;
+  accumulateAll: () => Promise<void>;
+  takeProfitAll: () => Promise<void>;
+}
+
+// accumulateProfit - Dodaje unrealized P&L na size pozicije
+accumulateProfit: async (positionId: string) => {
+  const position = get().positions.find(p => p.id === positionId);
+  if (position && position.unrealizedPnl > 0) {
+    set(state => ({
+      positions: state.positions.map(p => 
+        p.id === positionId 
+          ? {
+              ...p,
+              size: p.size + p.unrealizedPnl,  // Povećaj poziciju
+              unrealizedPnl: 0,                 // Reset P&L
+              unrealizedPnlPercent: 0,
+              entryPrice: p.currentPrice,       // Nova entry cena
+            }
+          : p
+      ),
+      stats: {
+        ...state.stats,
+        totalPnl: state.stats.totalPnl + position.unrealizedPnl, // Dodaj u realized
+      }
+    }));
+  }
+}
+
+// takeProfitPartial - Realizuje profit bez zatvaranja pozicije
+takeProfitPartial: async (positionId: string) => {
+  const position = get().positions.find(p => p.id === positionId);
+  if (position && position.unrealizedPnl > 0) {
+    set(state => ({
+      positions: state.positions.map(p => 
+        p.id === positionId 
+          ? {
+              ...p,
+              unrealizedPnl: 0,
+              unrealizedPnlPercent: 0,
+              entryPrice: p.currentPrice, // Reset entry na current
+            }
+          : p
+      ),
+      stats: {
+        ...state.stats,
+        totalPnl: state.stats.totalPnl + position.unrealizedPnl,
+      }
+    }));
+  }
+}
 ```
 
-### 2. src/pages/Dashboard.tsx
-```typescript
-// U header sekciji (linija ~268-282) dodati:
-<FloatingPnL />
+### 2. Izmene u FloatingPnL.tsx
 
-// Pre DropdownMenu komponente
-```
-
-### 3. src/components/PortfolioSummary.tsx
-```typescript
-// Dodati margin-bottom za bolju separaciju
-// Dodati "sticky" opciju kada je na vrhu viewport-a
-// Povećati font size za P&L vrednosti
-```
-
-## Vizuelni Rezultat
-
-### Desktop Header:
-```
-[Logo] Diadonum    │ 💰 +$127.45 unrealized │ 📈 3 positions │ Live Data │ [User ▼]
-```
-
-### Mobile Header:
-```
-[Logo]  │ +$127 (3) │ [👤]
-```
-
-### PortfolioSummary (ispod headera):
-- Veći i upadljiviji prikaz
-- Razmak `mb-6` od tabova
-- Opcioni sticky režim
-
-## Tehnički Detalji
-
-### FloatingPnL komponenta
 ```typescript
 export function FloatingPnL() {
-  const { positions, stats } = useTradingStore();
-  const openPositions = positions.filter(p => p.status === 'open');
-  const totalPnL = openPositions.reduce((sum, p) => sum + p.unrealizedPnl, 0);
+  const { positions, accumulateAll, takeProfitAll } = useTradingStore();
+  const [showActions, setShowActions] = useState(false);
   
-  if (openPositions.length === 0) return null; // Sakrij ako nema pozicija
+  // Postojeća logika...
+  
+  const isProfit = totalPnL > 0;
   
   return (
-    <Link to="/trading">
-      <Badge variant={totalPnL >= 0 ? "success" : "destructive"}>
-        <Wallet className="h-3 w-3 mr-1" />
-        {totalPnL >= 0 ? '+' : ''}{totalPnL.toFixed(2)}
-        <span className="ml-1 opacity-70">({openPositions.length})</span>
-      </Badge>
-    </Link>
+    <div className="flex items-center gap-2">
+      <Link to="/trading">
+        <Badge>...</Badge>
+      </Link>
+      
+      {/* Akcioni tasteri - samo kada je profit > 0 */}
+      {isProfit && (
+        <>
+          <Button 
+            size="sm" 
+            variant="outline" 
+            className="h-7 text-xs bg-success/10 text-success"
+            onClick={accumulateAll}
+          >
+            <TrendingUp className="h-3 w-3 mr-1" />
+            Akumuliraj
+          </Button>
+          <Button 
+            size="sm" 
+            variant="outline" 
+            className="h-7 text-xs bg-primary/10 text-primary"
+            onClick={takeProfitAll}
+          >
+            <DollarSign className="h-3 w-3 mr-1" />
+            Pokupi
+          </Button>
+        </>
+      )}
+    </div>
   );
 }
 ```
 
-## Očekivani Rezultat
+### 3. Izmene u PositionCard.tsx
 
-| Element | Pre | Posle |
-|---------|-----|-------|
-| P&L u headeru | Ne postoji | Uvek vidljiv badge |
-| Vizuelna prominentnost | Gubi se | Upadljiv i uvek dostupan |
-| Mobile prikaz | Nije optimizovan | Kompaktan badge |
-| Klik akcija | Nema | Vodi na /trading |
+Dodavanje dugmića za svaku poziciju u profitu:
 
+```typescript
+// U PositionCard komponenti
+{position.unrealizedPnl > 0 && (
+  <div className="flex gap-2 mt-3">
+    <Button 
+      size="sm" 
+      variant="outline"
+      className="flex-1 bg-success/10 text-success"
+      onClick={() => onAccumulate(position.id)}
+    >
+      <TrendingUp className="h-3 w-3 mr-1" />
+      Akumuliraj +${position.unrealizedPnl.toFixed(2)}
+    </Button>
+    <Button 
+      size="sm" 
+      variant="outline"
+      className="flex-1 bg-primary/10 text-primary"
+      onClick={() => onTakeProfit(position.id)}
+    >
+      <Wallet className="h-3 w-3 mr-1" />
+      Pokupi
+    </Button>
+  </div>
+)}
+```
+
+---
+
+## Fajlovi za izmenu
+
+| Fajl | Izmena |
+|------|--------|
+| `src/store/tradingStore.ts` | Dodati `accumulateProfit`, `takeProfitPartial`, `accumulateAll`, `takeProfitAll` |
+| `src/components/FloatingPnL.tsx` | Dodati dugmiće "Akumuliraj" i "Pokupi" kada je profit > 0 |
+| `src/components/PositionCard.tsx` | Dodati akcione dugmiće za svaku poziciju u profitu |
+| `src/pages/Trading.tsx` | Proslediti nove handler funkcije |
+
+---
+
+## Vizuelni Prikaz
+
+### FloatingPnL u headeru (kada je profit):
+```
+💰 +$45.23 (2 pos) │ [📈 Akumuliraj] [💵 Pokupi]
+```
+
+### PositionCard (pojedinačna pozicija u profitu):
+```
+┌─────────────────────────────────────────────┐
+│  PEPE/USDT                        $1,000    │
+│  Long: Binance ──── Short: dYdX             │
+│                                             │
+│  Unrealized P&L     Funding Collected       │
+│  +$25.50 (+2.55%)   +$8.50 (3 intervals)   │
+│                                             │
+│  ┌────────────────┐ ┌────────────────┐      │
+│  │ 📈 Akumuliraj  │ │ 💵 Pokupi      │      │
+│  │    +$25.50     │ │    Profit      │      │
+│  └────────────────┘ └────────────────┘      │
+│                                             │
+│            [✕ Zatvori poziciju]             │
+└─────────────────────────────────────────────┘
+```
+
+---
+
+## Objašnjenje za korisnike
+
+- **Akumuliraj**: "Reinvestiraj svoj profit. Tvoja pozicija raste, a entry cena se resetuje na trenutnu. Compound efekat!"
+- **Pokupi (Take Profit)**: "Realizuj svoj profit. Pozicija ostaje otvorena, ali P&L se resetuje na nulu."
+
+Obe akcije prebacuju unrealized P&L u realized P&L (ukupna zarada).
+
+---
+
+## Očekivani rezultat
+
+| Funkcija | Efekat |
+|----------|--------|
+| Akumuliraj | Size: $1000 → $1025, Entry: reset, Realized: +$25 |
+| Pokupi | Size: $1000 (nepromenjeno), Entry: reset, Realized: +$25 |
+| Akumuliraj Sve | Primeni na sve pozicije u profitu |
+| Pokupi Sve | Realizuj profit iz svih pozicija |
