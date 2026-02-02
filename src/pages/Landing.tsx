@@ -175,8 +175,24 @@ export default function LandingPage() {
               />
               <span className="font-semibold">Diadonum</span>
             </div>
+            
+            {/* Legal Links */}
+            <div className="flex items-center gap-4 text-sm">
+              <Link to="/terms" className="text-muted-foreground hover:text-foreground transition-colors">
+                Terms of Service
+              </Link>
+              <span className="text-muted-foreground">|</span>
+              <Link to="/privacy" className="text-muted-foreground hover:text-foreground transition-colors">
+                Privacy Policy
+              </Link>
+              <span className="text-muted-foreground">|</span>
+              <Link to="/risk-disclosure" className="text-muted-foreground hover:text-foreground transition-colors">
+                Risk Disclosure
+              </Link>
+            </div>
+            
             <p className="text-sm text-muted-foreground text-center">
-              © 2024 Diadonum. Not financial advice. Trading involves risk.
+              © 2026 Diadonum. Not financial advice. Trading involves risk.
             </p>
           </div>
         </div>
