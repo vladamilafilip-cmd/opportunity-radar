@@ -48,23 +48,28 @@ export function FundingCountdown({
     <div className={cn(
       "flex items-center gap-1.5 font-mono",
       sizeClasses[size],
-      isUrgent ? "text-warning animate-pulse" : "text-muted-foreground",
+      isUrgent ? "text-warning animate-pulse" : "text-success",
       className
     )}>
       {isUrgent ? (
         <Zap className={cn(
+          "text-warning",
           size === "sm" ? "h-3 w-3" : size === "md" ? "h-3.5 w-3.5" : "h-4 w-4"
         )} />
       ) : (
         <Timer className={cn(
+          "text-success",
           size === "sm" ? "h-3 w-3" : size === "md" ? "h-3.5 w-3.5" : "h-4 w-4"
         )} />
       )}
-      <span className={cn(isUrgent && "font-semibold")}>
+      <span className={cn(
+        "font-semibold",
+        isUrgent ? "text-warning" : "text-success"
+      )}>
         {timeRemaining}
       </span>
       {showExchange && (
-        <span className="text-muted-foreground/60 text-[10px]">
+        <span className="text-muted-foreground text-[10px]">
           ({exchange})
         </span>
       )}
