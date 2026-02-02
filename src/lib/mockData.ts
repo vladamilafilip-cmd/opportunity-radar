@@ -187,9 +187,19 @@ export const generateFundingRates = (): FundingRate[] => {
 export const generateFundingArbitrage = (): FundingArbitrage[] => {
   const opportunities: FundingArbitrage[] = [];
   
-  // Generate more opportunities (100 total - focus on high-risk/high-reward)
-  for (let i = 0; i < 100; i++) {
-    const symbol = SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)];
+  // Generate 200 opportunities - 70% high-risk, 20% medium, 10% safe
+  for (let i = 0; i < 200; i++) {
+    // Prioritize high-risk symbols (70% chance)
+    const rand = Math.random();
+    let symbol: string;
+    if (rand < 0.70) {
+      symbol = HIGH_RISK_SYMBOLS[Math.floor(Math.random() * HIGH_RISK_SYMBOLS.length)];
+    } else if (rand < 0.90) {
+      symbol = MEDIUM_SYMBOLS[Math.floor(Math.random() * MEDIUM_SYMBOLS.length)];
+    } else {
+      symbol = SAFE_SYMBOLS[Math.floor(Math.random() * SAFE_SYMBOLS.length)];
+    }
+    
     const symbolRisk = getSymbolRiskLevel(symbol);
     const isMeme = isMemeCoin(symbol);
     
@@ -202,17 +212,17 @@ export const generateFundingArbitrage = (): FundingArbitrage[] => {
     const longInterval = getFundingInterval(longExchange);
     const shortInterval = getFundingInterval(shortExchange);
     
-    // Riskier coins = bigger spreads = more profit potential
+    // EXTREME spreads for meme coins - up to 1.3% per 8h (~60% APR!)
     let longFundingRate: number, shortFundingRate: number;
     if (isMeme) {
-      longFundingRate = randomBetween(-0.30, 0.05);
-      shortFundingRate = randomBetween(0.15, 0.60);
+      longFundingRate = randomBetween(-0.50, 0.10);
+      shortFundingRate = randomBetween(0.25, 0.80);
     } else if (symbolRisk === 'high') {
-      longFundingRate = randomBetween(-0.20, 0.05);
-      shortFundingRate = randomBetween(0.10, 0.40);
+      longFundingRate = randomBetween(-0.30, 0.05);
+      shortFundingRate = randomBetween(0.15, 0.50);
     } else if (symbolRisk === 'medium') {
-      longFundingRate = randomBetween(-0.10, 0.02);
-      shortFundingRate = randomBetween(0.05, 0.20);
+      longFundingRate = randomBetween(-0.15, 0.02);
+      shortFundingRate = randomBetween(0.08, 0.25);
     } else {
       longFundingRate = randomBetween(-0.05, 0.01);
       shortFundingRate = randomBetween(0.02, 0.10);
@@ -235,7 +245,7 @@ export const generateFundingArbitrage = (): FundingArbitrage[] => {
       longFunding8h: long8h,
       shortFunding8h: short8h,
       spread,
-      score: Math.round(spread * 1000 + randomBetween(0, 30)),
+      score: Math.round(spread * 1000 + randomBetween(0, 50)),
       riskTier: symbolRisk,
       isMeme,
       volatilityMultiplier: getVolatilityMultiplier(symbol),
@@ -245,13 +255,23 @@ export const generateFundingArbitrage = (): FundingArbitrage[] => {
   return opportunities.sort((a, b) => b.score - a.score);
 };
 
-// Mock Price Arbitrage - higher spreads for volatile/shitcoins
+// Mock Price Arbitrage - EXTREME spreads for volatile/shitcoins
 export const generatePriceArbitrage = (): PriceArbitrage[] => {
   const opportunities: PriceArbitrage[] = [];
   
-  // More opportunities (80 total - more high-risk pairs)
-  for (let i = 0; i < 80; i++) {
-    const symbol = SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)];
+  // 150 opportunities - 70% high-risk, 20% medium, 10% safe
+  for (let i = 0; i < 150; i++) {
+    // Prioritize high-risk symbols (70% chance)
+    const rand = Math.random();
+    let symbol: string;
+    if (rand < 0.70) {
+      symbol = HIGH_RISK_SYMBOLS[Math.floor(Math.random() * HIGH_RISK_SYMBOLS.length)];
+    } else if (rand < 0.90) {
+      symbol = MEDIUM_SYMBOLS[Math.floor(Math.random() * MEDIUM_SYMBOLS.length)];
+    } else {
+      symbol = SAFE_SYMBOLS[Math.floor(Math.random() * SAFE_SYMBOLS.length)];
+    }
+    
     const symbolRisk = getSymbolRiskLevel(symbol);
     const isMeme = isMemeCoin(symbol);
     
@@ -267,21 +287,21 @@ export const generatePriceArbitrage = (): PriceArbitrage[] => {
     else if (symbol.includes('ETH')) basePrice = 3500;
     else if (symbol.includes('SOL')) basePrice = 150;
     else if (symbol.includes('BNB')) basePrice = 600;
-    else if (isMeme) basePrice = randomBetween(0.000001, 0.01); // Memes: very low prices
+    else if (isMeme) basePrice = randomBetween(0.000001, 0.01);
     else if (symbolRisk === 'high') basePrice = randomBetween(0.01, 10);
     else if (symbolRisk === 'medium') basePrice = randomBetween(1, 50);
     else basePrice = randomBetween(5, 200);
     
-    // Riskier coins = bigger price discrepancies
+    // EXTREME spreads - up to 12% for memes!
     let spreadMultiplier: number;
     if (isMeme) {
-      spreadMultiplier = randomBetween(0.01, 0.08); // 1% - 8% spreads on memes!
+      spreadMultiplier = randomBetween(0.02, 0.12); // 2% - 12% spreads!
     } else if (symbolRisk === 'high') {
-      spreadMultiplier = randomBetween(0.005, 0.05); // 0.5% - 5%
+      spreadMultiplier = randomBetween(0.01, 0.08); // 1% - 8%
     } else if (symbolRisk === 'medium') {
-      spreadMultiplier = randomBetween(0.002, 0.02); // 0.2% - 2%
+      spreadMultiplier = randomBetween(0.005, 0.04); // 0.5% - 4%
     } else {
-      spreadMultiplier = randomBetween(0.001, 0.008); // 0.1% - 0.8%
+      spreadMultiplier = randomBetween(0.001, 0.015); // 0.1% - 1.5%
     }
     
     const buyPrice = basePrice * (1 - spreadMultiplier);
@@ -299,7 +319,7 @@ export const generatePriceArbitrage = (): PriceArbitrage[] => {
       sellPrice,
       spreadPercent,
       netAfterFees,
-      score: Math.round(netAfterFees * 100 + randomBetween(0, 20)),
+      score: Math.round(netAfterFees * 100 + randomBetween(0, 30)),
       riskTier: symbolRisk,
       isMeme,
       volatilityMultiplier: getVolatilityMultiplier(symbol),
@@ -309,13 +329,13 @@ export const generatePriceArbitrage = (): PriceArbitrage[] => {
   return opportunities.sort((a, b) => b.score - a.score);
 };
 
-// Mock Opportunities
+// Mock Opportunities - 50 total, sorted by highest return
 export const generateOpportunities = (): Opportunity[] => {
   const fundingArbs = generateFundingArbitrage();
   const priceArbs = generatePriceArbitrage();
   
   const opportunities: Opportunity[] = [
-    ...fundingArbs.slice(0, 15).map(fa => ({
+    ...fundingArbs.slice(0, 30).map(fa => ({
       id: fa.id,
       symbol: fa.symbol,
       type: 'funding' as const,
@@ -328,7 +348,7 @@ export const generateOpportunities = (): Opportunity[] => {
       isMeme: fa.isMeme,
       volatilityMultiplier: fa.volatilityMultiplier,
     })),
-    ...priceArbs.slice(0, 10).map(pa => ({
+    ...priceArbs.slice(0, 20).map(pa => ({
       id: pa.id,
       symbol: pa.symbol,
       type: 'price' as const,
@@ -343,7 +363,8 @@ export const generateOpportunities = (): Opportunity[] => {
     })),
   ];
   
-  return opportunities.sort((a, b) => b.score - a.score);
+  // Sort by potential return (highest first)
+  return opportunities.sort((a, b) => b.potentialReturn - a.potentialReturn);
 };
 
 // Mock Opportunity Details
