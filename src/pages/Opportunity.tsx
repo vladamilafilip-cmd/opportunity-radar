@@ -40,19 +40,8 @@ export default function OpportunityPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   
   const opportunity = generateOpportunityDetails(id || 'fa-0');
-  
-  const isPro = user?.plan !== 'free';
 
   const handleOpenTrade = async () => {
-    if (!isPro) {
-      toast({
-        title: "PRO Required",
-        description: "Upgrade to PRO to use paper trading.",
-        variant: "destructive",
-      });
-      return;
-    }
-    
     await openPosition({
       symbol: opportunity.symbol,
       longExchange: opportunity.exchanges[0],

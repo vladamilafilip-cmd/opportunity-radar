@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Users, ShieldCheck, Gift, Loader2 } from "lucide-react";
+import { ArrowLeft, Users, ShieldCheck, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Switch } from "@/components/ui/switch";
 
@@ -108,8 +108,6 @@ export default function AdminPage() {
 
   const totalUsers = users.length;
   const activeUsers = users.filter(u => u.isActive).length;
-  const proUsers = users.filter(u => u.plan !== 'free').length;
-  const freeSlots = Math.max(0, 50 - users.filter(u => u.plan === 'free').length);
 
   if (isLoading) {
     return (
@@ -141,7 +139,7 @@ export default function AdminPage() {
         <p className="text-muted-foreground mb-8">Manage users and subscriptions</p>
 
         {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-2 gap-4 mb-8">
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
@@ -164,32 +162,6 @@ export default function AdminPage() {
                 <div>
                   <p className="text-sm text-muted-foreground">Active</p>
                   <p className="text-2xl font-bold">{activeUsers}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-accent/20 flex items-center justify-center">
-                  <ShieldCheck className="h-5 w-5 text-accent" />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">PRO Users</p>
-                  <p className="text-2xl font-bold">{proUsers}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center">
-                  <Gift className="h-5 w-5 text-muted-foreground" />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Free Slots Left</p>
-                  <p className="text-2xl font-bold">{freeSlots}/50</p>
                 </div>
               </div>
             </CardContent>

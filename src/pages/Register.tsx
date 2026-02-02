@@ -71,7 +71,7 @@ export default function RegisterPage() {
       } else {
         toast({
           title: "Account created!",
-          description: "Welcome to Diadonum. You're on the FREE plan.",
+          description: "Welcome to Diadonum. All features unlocked!",
         });
         navigate("/dashboard");
       }

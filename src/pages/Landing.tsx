@@ -3,7 +3,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { DisclaimerBanner } from "@/components/DisclaimerBanner";
-import { PLAN_DETAILS } from "@/lib/mockData";
 import { 
   TrendingUp, 
   ArrowLeftRight, 
@@ -109,57 +108,50 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Pricing */}
+      {/* Pricing - 100% Free */}
       <section className="container mx-auto px-4 py-16">
         <h2 className="text-3xl font-bold text-center mb-4">
-          Simple Pricing
+          100% Free
         </h2>
         <p className="text-muted-foreground text-center mb-12 max-w-xl mx-auto">
-          Choose the plan that fits your trading style. Upgrade or downgrade anytime.
+          All features unlocked for everyone. No credit card required.
         </p>
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto">
-          {PLAN_DETAILS.map((plan) => (
-            <Card 
-              key={plan.id} 
-              className={`relative ${plan.isPopular ? 'border-primary shadow-lg shadow-primary/10' : ''}`}
-            >
-              {plan.isPopular && (
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                  <Badge className="bg-primary">Most Popular</Badge>
-                </div>
-              )}
-              <CardHeader>
-                <CardTitle>{plan.name}</CardTitle>
-                <CardDescription>
-                  <span className="text-3xl font-bold text-foreground">
-                    {plan.price === 0 ? 'Free' : `£${plan.price}`}
-                  </span>
-                  {plan.price > 0 && <span className="text-muted-foreground">/month</span>}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-2">
-                  {plan.features.map((feature) => (
-                    <li key={feature} className="flex items-start gap-2 text-sm">
-                      <Check className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-                      <span>{feature}</span>
-                    </li>
-                  ))}
-                  {plan.limitations?.map((limitation) => (
-                    <li key={limitation} className="flex items-start gap-2 text-sm text-muted-foreground">
-                      <span className="w-4 text-center">×</span>
-                      <span>{limitation}</span>
-                    </li>
-                  ))}
-                </ul>
-                <Link to="/register" className="block mt-6">
-                  <Button className="w-full" variant={plan.isPopular ? "default" : "outline"}>
-                    {plan.price === 0 ? "Start Free" : "Get Started"}
-                  </Button>
-                </Link>
-              </CardContent>
-            </Card>
-          ))}
+        <div className="max-w-lg mx-auto">
+          <Card className="border-primary shadow-lg shadow-primary/10">
+            <CardHeader className="text-center">
+              <Badge className="w-fit mx-auto mb-2 bg-primary">All Features Included</Badge>
+              <CardTitle className="text-2xl">FREE Forever</CardTitle>
+              <CardDescription>
+                <span className="text-4xl font-bold text-foreground">$0</span>
+                <span className="text-muted-foreground"> / forever</span>
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ul className="space-y-3 mb-6">
+                {[
+                  'Real-time data refresh',
+                  'Funding rate radar',
+                  'Funding & Price arbitrage signals',
+                  'Paper trading (educational)',
+                  '100+ trading pairs',
+                  '40+ meme coins',
+                  'Discord & Telegram alerts',
+                  'API access',
+                  'Priority support',
+                ].map((feature) => (
+                  <li key={feature} className="flex items-center gap-2 text-sm">
+                    <Check className="h-4 w-4 text-primary shrink-0" />
+                    <span>{feature}</span>
+                  </li>
+                ))}
+              </ul>
+              <Link to="/register" className="block">
+                <Button className="w-full" size="lg">
+                  Get Started Free
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
         </div>
       </section>
 

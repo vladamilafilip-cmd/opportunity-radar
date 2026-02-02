@@ -275,7 +275,7 @@ export default function Dashboard() {
                 <div className="px-2 py-1.5">
                   <p className="text-sm font-medium">{user?.name}</p>
                   <p className="text-xs text-muted-foreground">{user?.email}</p>
-                  <p className="text-xs text-primary mt-1 uppercase">{user?.plan} Plan</p>
+                  <p className="text-xs text-primary mt-1">Full Access</p>
                 </div>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild data-tour="paper-trading">
