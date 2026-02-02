@@ -15,6 +15,10 @@ import { UserDataBanner } from "@/components/UserDataBanner";
 import { LastUpdated } from "@/components/LastUpdated";
 import { ProductTourWrapper } from "@/components/ProductTour";
 import { PnLDisplay } from "@/components/PnLDisplay";
+import { PortfolioSummary } from "@/components/PortfolioSummary";
+import { FundingIntervalBadge } from "@/components/FundingIntervalBadge";
+import { FundingCountdown } from "@/components/FundingCountdown";
+import { APRDisplay } from "@/components/APRDisplay";
 import {
   generateFundingRates,
   generateFundingArbitrage,
@@ -48,7 +52,8 @@ import {
   AlertTriangle,
   HelpCircle,
   Wallet,
-  TrendingDown
+  TrendingDown,
+  Clock
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -407,83 +412,8 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        {/* Portfolio PnL Summary */}
-        <Card className="mb-6 border-primary/20 bg-gradient-to-r from-primary/5 to-transparent">
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-lg">
-                <Wallet className="h-5 w-5 text-primary" />
-                Portfolio Summary
-              </div>
-              <Link to="/trading">
-                <Button variant="outline" size="sm" className="gap-2">
-                  <LineChart className="h-4 w-4" />
-                  View Positions
-                </Button>
-              </Link>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {/* Open Positions */}
-              <div className="p-3 rounded-lg bg-background border">
-                <p className="text-xs text-muted-foreground mb-1">Open Positions</p>
-                <p className="text-2xl font-bold">{positions.length}</p>
-              </div>
-              
-              {/* Unrealized PnL */}
-              <div className="p-3 rounded-lg bg-background border">
-                <p className="text-xs text-muted-foreground mb-1">Unrealized P&L</p>
-                {positions.length > 0 ? (
-                  <PnLDisplay 
-                    value={positions.reduce((sum, p) => sum + p.unrealizedPnl, 0)} 
-                    percent={positions.reduce((sum, p) => sum + p.unrealizedPnlPercent, 0) / positions.length}
-                    size="lg" 
-                  />
-                ) : (
-                  <p className="text-2xl font-bold text-muted-foreground">$0.00</p>
-                )}
-              </div>
-              
-              {/* Realized PnL */}
-              <div className="p-3 rounded-lg bg-background border">
-                <p className="text-xs text-muted-foreground mb-1">Realized P&L</p>
-                <PnLDisplay value={stats.totalPnl} percent={stats.totalPnlPercent} size="lg" />
-              </div>
-              
-              {/* Win Rate */}
-              <div className="p-3 rounded-lg bg-background border">
-                <p className="text-xs text-muted-foreground mb-1">Win Rate</p>
-                <p className={`text-2xl font-bold ${stats.winRate >= 50 ? 'text-success' : 'text-danger'}`}>
-                  {stats.winRate.toFixed(1)}%
-                </p>
-              </div>
-            </div>
-            
-            {positions.length > 0 && (
-              <div className="mt-4 pt-4 border-t">
-                <p className="text-xs text-muted-foreground mb-2">Active Positions</p>
-                <div className="flex flex-wrap gap-2">
-                  {positions.slice(0, 5).map(pos => (
-                    <Badge 
-                      key={pos.id} 
-                      variant={pos.unrealizedPnl >= 0 ? "default" : "destructive"}
-                      className="gap-1"
-                    >
-                      {pos.symbol}
-                      <span className="font-mono text-xs">
-                        {pos.unrealizedPnl >= 0 ? '+' : ''}{pos.unrealizedPnl.toFixed(2)}
-                      </span>
-                    </Badge>
-                  ))}
-                  {positions.length > 5 && (
-                    <Badge variant="outline">+{positions.length - 5} more</Badge>
-                  )}
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        {/* Portfolio Summary - New Enhanced Component */}
+        <PortfolioSummary />
         
         <Tabs defaultValue="funding">
           <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-grid">
@@ -534,24 +464,29 @@ export default function Dashboard() {
                           <TableHead>Exchange</TableHead>
                           <TableHead>Symbol</TableHead>
                           <TableHead className="text-right">Funding Rate</TableHead>
+                          <TableHead className="text-right">Interval</TableHead>
                           <TableHead className="text-right">Spread (bps)</TableHead>
-                          <TableHead className="text-right">Cost (bps)</TableHead>
                           <TableHead>Risk</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {displayFundingRates.slice(0, 20).map((rate: any, idx: number) => (
                           <TableRow key={`${rate.exchange}-${rate.symbol}-${idx}`}>
-                            <TableCell className="font-medium">{rate.exchange || 'Unknown'}</TableCell>
+                            <TableCell className="font-medium">
+                              <div className="flex items-center gap-2">
+                                {rate.exchange || 'Unknown'}
+                                <FundingIntervalBadge exchange={rate.exchange || 'Binance'} size="sm" />
+                              </div>
+                            </TableCell>
                             <TableCell>{rate.symbol || 'Unknown'}</TableCell>
                             <TableCell className={`text-right font-mono ${Number.isFinite(rate.fundingRate) && rate.fundingRate >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                               {Number.isFinite(rate.fundingRate) ? `${rate.fundingRate >= 0 ? '+' : ''}${(rate.fundingRate * 100).toFixed(4)}%` : '0.0000%'}
                             </TableCell>
+                            <TableCell className="text-right">
+                              <FundingCountdown exchange={rate.exchange || 'Binance'} showExchange={false} size="sm" />
+                            </TableCell>
                             <TableCell className="text-right font-mono">
                               {Number.isFinite(rate.spreadBps) ? rate.spreadBps.toFixed(1) : '0.0'}
-                            </TableCell>
-                            <TableCell className="text-right font-mono text-muted-foreground">
-                              {Number.isFinite(rate.totalCostBps) ? rate.totalCostBps.toFixed(1) : '0.0'}
                             </TableCell>
                             <TableCell data-tour="risk-badge">
                               <RiskBadge tier={rate.riskTier || 'medium'} />
@@ -593,12 +528,13 @@ export default function Dashboard() {
                         <TableHeader>
                           <TableRow>
                             <TableHead>Symbol</TableHead>
-                            <TableHead>Long Exchange</TableHead>
-                            <TableHead>Short Exchange</TableHead>
-                            <TableHead className="text-right">Net Profit</TableHead>
-                            <TableHead className="text-right">Fee (bps)</TableHead>
-                            <TableHead className="text-right">Est. Profit ($)</TableHead>
-                            <TableHead className="text-right">Score</TableHead>
+                            <TableHead>Long</TableHead>
+                            <TableHead>Short</TableHead>
+                            <TableHead className="text-right">Spread</TableHead>
+                            <TableHead className="text-right">APR</TableHead>
+                            <TableHead className="text-right">Fee</TableHead>
+                            <TableHead className="text-right">Est. Profit</TableHead>
+                            <TableHead className="text-center">Next Funding</TableHead>
                             <TableHead>Risk</TableHead>
                             <TableHead></TableHead>
                           </TableRow>
@@ -607,18 +543,43 @@ export default function Dashboard() {
                           {displaySignals.map((arb: any) => (
                             <TableRow key={arb.id}>
                               <TableCell className="font-medium">{arb.symbol || 'N/A'}</TableCell>
-                              <TableCell className="text-green-600">{arb.longExchange || 'N/A'}</TableCell>
-                              <TableCell className="text-red-600">{arb.shortExchange || 'N/A'}</TableCell>
-                              <TableCell className="text-right font-mono text-green-600">
-                                {Number.isFinite(arb.netProfit ?? arb.spread) ? `+${(((arb.netProfit ?? arb.spread) || 0) * 100).toFixed(4)}%` : '0.0000%'}
+                              <TableCell>
+                                <div className="flex items-center gap-1">
+                                  <span className="text-success text-sm">{arb.longExchange || 'N/A'}</span>
+                                  <FundingIntervalBadge exchange={arb.longExchange || 'Binance'} size="sm" />
+                                </div>
                               </TableCell>
-                              <TableCell className="text-right font-mono text-muted-foreground">
-                                {arb.totalFee || 8}
+                              <TableCell>
+                                <div className="flex items-center gap-1">
+                                  <span className="text-danger text-sm">{arb.shortExchange || 'N/A'}</span>
+                                  <FundingIntervalBadge exchange={arb.shortExchange || 'Binance'} size="sm" />
+                                </div>
                               </TableCell>
-                              <TableCell className="text-right font-mono font-semibold text-green-600">
+                              <TableCell className="text-right font-mono text-success">
+                                {Number.isFinite(arb.netProfit ?? arb.spread) ? `+${(((arb.netProfit ?? arb.spread) || 0) * 100).toFixed(3)}%` : '0.000%'}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <APRDisplay 
+                                  spreadPercent={(arb.netProfit ?? arb.spread ?? 0) * 100}
+                                  longExchange={arb.longExchange}
+                                  shortExchange={arb.shortExchange}
+                                  positionSize={investmentAmount}
+                                  size="sm"
+                                />
+                              </TableCell>
+                              <TableCell className="text-right font-mono text-muted-foreground text-xs">
+                                {arb.totalFee || 8}bps
+                              </TableCell>
+                              <TableCell className="text-right font-mono font-semibold text-success">
                                 {formatProfitAbsolute((arb.netProfit ?? arb.spread) || 0)}
                               </TableCell>
-                              <TableCell className="text-right font-bold">{Number.isFinite(arb.score) ? arb.score : 0}</TableCell>
+                              <TableCell className="text-center">
+                                <FundingCountdown 
+                                  exchange={arb.longExchange || 'Binance'} 
+                                  showExchange={false}
+                                  size="sm"
+                                />
+                              </TableCell>
                               <TableCell>
                                 <RiskBadge tier={arb.riskTier || 'medium'} />
                               </TableCell>

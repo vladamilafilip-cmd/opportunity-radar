@@ -50,6 +50,11 @@ export interface FundingArbitrage {
   riskTier: RiskTier;
   isMeme?: boolean;
   volatilityMultiplier?: number;
+  // New fields for enhanced display
+  apr?: number;
+  netProfitPer8h?: number;
+  nextFundingTime?: string;
+  totalFeeBps?: number;
 }
 
 export interface PriceArbitrage {
@@ -109,6 +114,14 @@ export interface ExchangeData {
 }
 
 // Paper Trading Types
+export interface FundingPayment {
+  id: string;
+  timestamp: string;
+  exchange: string;
+  amount: number;
+  rate: number;
+}
+
 export interface PaperPosition {
   id: string;
   symbol: string;
@@ -121,6 +134,12 @@ export interface PaperPosition {
   unrealizedPnlPercent: number;
   openedAt: string;
   status: 'open' | 'closed';
+  // New fields for enhanced tracking
+  fundingCollected?: number;
+  fundingPayments?: FundingPayment[];
+  longFundingInterval?: number;
+  shortFundingInterval?: number;
+  spreadPercent?: number;
 }
 
 export interface PaperTrade {
@@ -135,6 +154,8 @@ export interface PaperTrade {
   realizedPnlPercent: number;
   openedAt: string;
   closedAt: string;
+  fundingCollected?: number;
+  totalIntervals?: number;
 }
 
 export interface TradingStats {
