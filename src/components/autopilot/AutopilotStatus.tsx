@@ -1,0 +1,80 @@
+// src/components/autopilot/AutopilotStatus.tsx
+// Compact status widget for header/navbar
+
+import { Badge } from '@/components/ui/badge';
+import { Bot, Activity, AlertTriangle } from 'lucide-react';
+import { useAutopilotStore } from '@/store/autopilotStore';
+import { cn } from '@/lib/utils';
+
+interface AutopilotStatusProps {
+  compact?: boolean;
+  onClick?: () => void;
+}
+
+export function AutopilotStatus({ compact = false, onClick }: AutopilotStatusProps) {
+  const { mode, isRunning, killSwitchActive, bucketAllocation } = useAutopilotStore();
+
+  const totalPositions = 
+    bucketAllocation.safe.current + 
+    bucketAllocation.medium.current + 
+    bucketAllocation.high.current;
+
+  if (mode === 'off') {
+    return (
+      <div 
+        className={cn(
+          "flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity",
+          compact && "text-xs"
+        )}
+        onClick={onClick}
+      >
+        <Bot className={cn("text-muted-foreground", compact ? "h-4 w-4" : "h-5 w-5")} />
+        {!compact && <span className="text-muted-foreground">Autopilot OFF</span>}
+      </div>
+    );
+  }
+
+  return (
+    <div 
+      className={cn(
+        "flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity",
+        compact && "text-xs"
+      )}
+      onClick={onClick}
+    >
+      {killSwitchActive ? (
+        <>
+          <AlertTriangle className={cn("text-destructive animate-pulse", compact ? "h-4 w-4" : "h-5 w-5")} />
+          {!compact && <span className="text-destructive">Kill Switch</span>}
+        </>
+      ) : isRunning ? (
+        <>
+          <Activity className={cn("text-success animate-pulse", compact ? "h-4 w-4" : "h-5 w-5")} />
+          {!compact && (
+            <Badge variant="outline" className="bg-success/20 text-success border-success/30">
+              {totalPositions} pos
+            </Badge>
+          )}
+        </>
+      ) : (
+        <>
+          <Bot className={cn("text-warning", compact ? "h-4 w-4" : "h-5 w-5")} />
+          {!compact && <span className="text-warning">Paused</span>}
+        </>
+      )}
+      
+      {!compact && (
+        <Badge 
+          variant="outline" 
+          className={cn(
+            "text-xs",
+            mode === 'paper' && "bg-warning/20 text-warning border-warning/30",
+            mode === 'live' && "bg-destructive/20 text-destructive border-destructive/30"
+          )}
+        >
+          {mode.toUpperCase()}
+        </Badge>
+      )}
+    </div>
+  );
+}
