@@ -1,13 +1,74 @@
-// src/types/autopilot.ts - TypeScript types for Autopilot System
+// src/types/autopilot.ts - TypeScript types for LIVE Autopilot System
 
 export type RiskTier = 'safe' | 'medium' | 'high';
-export type AutopilotMode = 'off' | 'paper' | 'live';
+export type AutopilotMode = 'off' | 'live' | 'dryrun';
 export type PositionStatus = 'open' | 'closed' | 'stopped';
 export type AuditLevel = 'info' | 'warn' | 'error' | 'action';
+export type RiskLevel = 'normal' | 'cautious' | 'stopped';
 
-// Database types
+// Exchange balance structure
+export interface ExchangeBalance {
+  code: string;
+  name: string;
+  allocation: number;      // Total allocated
+  deployed: number;        // Currently deployed
+  available: number;       // Available for new positions
+  purpose: 'long' | 'short' | 'both';
+}
+
+// Hedge position (combines long + short legs)
+export interface HedgePosition {
+  id: string;
+  hedgeId: string;         // Links both legs
+  mode: AutopilotMode;
+  symbol: string;
+  symbolId: string | null;
+  
+  // Long leg
+  longExchange: string;
+  longMarketId: string | null;
+  longEntryPrice: number;
+  longCurrentPrice: number | null;
+  
+  // Short leg
+  shortExchange: string;
+  shortMarketId: string | null;
+  shortEntryPrice: number;
+  shortCurrentPrice: number | null;
+  
+  // Position info
+  hedgeSizeEur: number;     // Total (both legs)
+  legSizeEur: number;       // Per leg
+  leverage: number;
+  riskTier: RiskTier;
+  
+  // Timing
+  entryTs: string;
+  exitTs: string | null;
+  
+  // Funding & PnL
+  entryFundingSpread8h: number;
+  entryScore: number;
+  fundingCollectedEur: number;
+  intervalsCollected: number;
+  unrealizedPnlEur: number;
+  unrealizedPnlPercent: number;
+  realizedPnlEur: number | null;
+  realizedPnlPercent: number | null;
+  
+  // Status
+  status: PositionStatus;
+  exitReason: string | null;
+  
+  // Risk
+  pnlDrift: number;        // Delta-neutral drift %
+  riskSnapshot: Record<string, unknown>;
+}
+
+// Database types (raw from Supabase)
 export interface AutopilotPosition {
   id: string;
+  hedge_id: string | null;
   mode: AutopilotMode;
   symbol: string;
   symbol_id: string | null;
@@ -29,6 +90,7 @@ export interface AutopilotPosition {
   intervals_collected: number;
   unrealized_pnl_eur: number;
   unrealized_pnl_percent: number;
+  pnl_drift: number;
   exit_ts: string | null;
   exit_long_price: number | null;
   exit_short_price: number | null;
@@ -56,6 +118,7 @@ export interface AutopilotState {
   id: string;
   mode: AutopilotMode;
   is_running: boolean;
+  dry_run_enabled: boolean;
   last_scan_ts: string | null;
   last_trade_ts: string | null;
   total_realized_pnl_eur: number;
@@ -96,6 +159,10 @@ export interface OpportunityCalc {
   score: number;
   riskTier: RiskTier;
   reasons: string[];
+  
+  // Validation
+  isValid: boolean;
+  rejectionReason: string | null;
 }
 
 export interface BucketAllocation {
@@ -107,8 +174,11 @@ export interface BucketAllocation {
 export interface RiskBudget {
   used: number;
   total: number;
+  available: number;
   dailyDrawdown: number;
   stressTestExposure: number;
+  riskLevel: RiskLevel;
+  canOpenNew: boolean;
 }
 
 // Store state
@@ -116,6 +186,7 @@ export interface AutopilotStoreState {
   // State from DB
   mode: AutopilotMode;
   isRunning: boolean;
+  dryRunEnabled: boolean;
   killSwitchActive: boolean;
   killSwitchReason: string | null;
   lastScanTs: string | null;
@@ -129,6 +200,12 @@ export interface AutopilotStoreState {
   auditLogs: AutopilotAuditLog[];
   bucketAllocation: BucketAllocation;
   riskBudget: RiskBudget;
+  exchangeBalances: ExchangeBalance[];
+  riskLevel: RiskLevel;
+  
+  // Stats
+  todayPnl: number;
+  weeklyPnl: number;
   
   // Loading states
   isLoading: boolean;
@@ -143,6 +220,7 @@ export interface AutopilotStoreActions {
   
   // Control actions
   setMode: (mode: AutopilotMode) => Promise<void>;
+  setDryRun: (enabled: boolean) => Promise<void>;
   start: () => Promise<void>;
   stop: () => Promise<void>;
   stopAll: () => Promise<void>;

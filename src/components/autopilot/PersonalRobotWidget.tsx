@@ -1,11 +1,12 @@
 // src/components/autopilot/PersonalRobotWidget.tsx
-// Compact all-in-one widget for personal robot control
+// Compact all-in-one widget for LIVE funding arbitrage bot
 
 import { useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { 
   Bot, 
   Play, 
@@ -15,10 +16,11 @@ import {
   AlertTriangle,
   TrendingUp,
   Wallet,
-  Clock
+  Clock,
+  Zap,
+  Shield
 } from 'lucide-react';
 import { useAutopilotStore } from '@/store/autopilotStore';
-import { autopilotConfig } from '../../../config/autopilot';
 import { formatDistanceToNow } from 'date-fns';
 import { cn } from '@/lib/utils';
 
@@ -26,6 +28,7 @@ export function PersonalRobotWidget() {
   const {
     mode,
     isRunning,
+    dryRunEnabled,
     killSwitchActive,
     killSwitchReason,
     lastScanTs,
@@ -34,6 +37,8 @@ export function PersonalRobotWidget() {
     positions,
     bucketAllocation,
     riskBudget,
+    exchangeBalances,
+    todayPnl,
     fetchState,
     fetchPositions,
     start,
@@ -58,7 +63,6 @@ export function PersonalRobotWidget() {
   }, [fetchState, fetchPositions, subscribeToState, subscribeToPositions]);
 
   const openPositions = positions.filter(p => p.status === 'open');
-  const todayPnl = openPositions.reduce((sum, p) => sum + p.unrealized_pnl_eur, 0);
   const riskPercent = riskBudget.total > 0 ? (riskBudget.used / riskBudget.total) * 100 : 0;
 
   const handleRefresh = () => {
@@ -68,8 +72,8 @@ export function PersonalRobotWidget() {
 
   const modeColor = {
     off: 'bg-muted text-muted-foreground',
-    paper: 'bg-warning/20 text-warning border-warning/30',
-    live: 'bg-destructive/20 text-destructive border-destructive/30',
+    dryrun: 'bg-warning/20 text-warning border-warning/30',
+    live: 'bg-success/20 text-success border-success/30',
   };
 
   return (
@@ -78,21 +82,39 @@ export function PersonalRobotWidget() {
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-lg">
             <Bot className="h-5 w-5 text-primary" />
-            MY ROBOT
+            FUNDING ARBITRAGE BOT
           </CardTitle>
-          <Badge className={cn('uppercase font-mono', modeColor[mode])}>
-            {mode} MODE
-          </Badge>
+          <div className="flex items-center gap-2">
+            {dryRunEnabled && mode !== 'off' && (
+              <Badge variant="outline" className="bg-warning/20 text-warning border-warning/30 text-xs">
+                DRY RUN
+              </Badge>
+            )}
+            <Badge className={cn('uppercase font-mono', modeColor[mode])}>
+              {mode === 'live' && <Zap className="h-3 w-3 mr-1" />}
+              {mode}
+            </Badge>
+          </div>
         </div>
       </CardHeader>
       
       <CardContent className="space-y-4">
+        {/* Risk Warning */}
+        {mode === 'live' && (
+          <Alert className="bg-muted/50 border-muted">
+            <Shield className="h-4 w-4" />
+            <AlertDescription className="text-xs text-muted-foreground">
+              Market-neutral delta hedge strategy. Profit NOT guaranteed.
+            </AlertDescription>
+          </Alert>
+        )}
+
         {/* Kill Switch Warning */}
         {killSwitchActive && (
           <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/30 text-destructive">
             <AlertTriangle className="h-4 w-4 flex-shrink-0" />
             <div className="flex-1 text-sm">
-              <strong>Kill Switch Active:</strong> {killSwitchReason || 'Risk limit reached'}
+              <strong>Kill Switch:</strong> {killSwitchReason || 'Risk limit'}
             </div>
             <Button size="sm" variant="destructive" onClick={resetKillSwitch}>
               Reset
@@ -110,10 +132,20 @@ export function PersonalRobotWidget() {
             {isRunning ? 'Running' : 'Stopped'}
             {lastScanTs && (
               <span className="ml-1">
-                (last scan {formatDistanceToNow(new Date(lastScanTs), { addSuffix: true })})
+                (scan {formatDistanceToNow(new Date(lastScanTs), { addSuffix: true })})
               </span>
             )}
           </span>
+        </div>
+
+        {/* Exchange Allocation - Compact */}
+        <div className="grid grid-cols-3 gap-1 text-xs">
+          {exchangeBalances.slice(0, 6).map((ex) => (
+            <div key={ex.code} className="bg-muted/30 rounded px-2 py-1 text-center">
+              <div className="font-medium truncate">{ex.name}</div>
+              <div className="text-muted-foreground">€{ex.deployed}/{ex.allocation}</div>
+            </div>
+          ))}
         </div>
 
         {/* Bucket Allocation */}
@@ -133,10 +165,7 @@ export function PersonalRobotWidget() {
                 <div className="text-lg font-mono">
                   {bucket.current} / {bucket.max}
                 </div>
-                <Progress 
-                  value={bucket.percent} 
-                  className="h-1 mt-1"
-                />
+                <Progress value={bucket.percent} className="h-1 mt-1" />
               </div>
             );
           })}
@@ -145,10 +174,16 @@ export function PersonalRobotWidget() {
         {/* Risk Budget */}
         <div className="space-y-1">
           <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Risk Budget</span>
+            <span className="text-muted-foreground">Deployed / Max</span>
             <span className="font-mono">
-              €{riskBudget.used.toFixed(2)} / €{riskBudget.total.toFixed(2)}
-              <span className="text-muted-foreground ml-1">({riskPercent.toFixed(0)}%)</span>
+              €{riskBudget.used.toFixed(0)} / €{riskBudget.total.toFixed(0)}
+              <span className={cn(
+                "ml-1 text-xs",
+                riskBudget.riskLevel === 'normal' ? 'text-success' :
+                riskBudget.riskLevel === 'cautious' ? 'text-warning' : 'text-destructive'
+              )}>
+                ({riskBudget.riskLevel.toUpperCase()})
+              </span>
             </span>
           </div>
           <Progress 
