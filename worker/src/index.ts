@@ -1,61 +1,75 @@
 // worker/src/index.ts
-// Main entry point for the autopilot worker
+// Main entry point for the LIVE delta-neutral hedge autopilot worker
 
 import { createSupabaseClient } from './supabaseClient.js';
 import { OpportunityEngine } from './engine/opportunityEngine.js';
 import { PositionManager } from './engine/positionManager.js';
 import { RiskManager } from './engine/riskManager.js';
 import { AuditLog } from './utils/auditLog.js';
+import { HedgeExecutor } from './adapters/hedgeExecutor.js';
 
-// Configuration - matches config/autopilot.ts
+// Configuration - LIVE delta-neutral hedge settings
 const config = {
   capital: {
     totalEur: 200,
     maxRiskPercent: 10,
-    positionSizeEur: 10,
-    reinvestThresholdEur: 400,
+    hedgeSizeEur: 20,           // Total per hedge
+    legSizeEur: 10,             // Per leg
+    bufferEur: 40,              // Always reserved
+    maxDeployedEur: 160,        // 8 hedges × 20 EUR
   },
   buckets: {
-    safe: { percent: 70, maxPositions: 14 },
-    medium: { percent: 20, maxPositions: 4 },
-    high: { percent: 10, maxPositions: 2 },
+    safe: { percent: 60, maxPositions: 5 },
+    medium: { percent: 30, maxPositions: 2 },
+    high: { percent: 10, maxPositions: 1 },
   } as const,
   allowedExchanges: [
-    'binance', 'bybit', 'okx', 'bitget', 'gate',
-    'kucoin', 'htx', 'mexc', 'dydx', 'hyperliquid'
+    'hyperliquid', 'binance', 'bybit', 'okx', 'dydx', 'kucoin'
   ],
   fundingIntervals: {
-    binance: 8, bybit: 8, okx: 8, bitget: 8, gate: 8,
-    kucoin: 8, htx: 8, mexc: 8, deribit: 8,
-    dydx: 1, hyperliquid: 1, kraken: 4,
+    binance: 8, bybit: 8, okx: 8, kucoin: 8,
+    dydx: 1, hyperliquid: 1,
   },
   thresholds: {
-    safe: { minProfitBps: 15, maxSpreadBps: 10, minLiquidityScore: 70 },
-    medium: { minProfitBps: 25, maxSpreadBps: 20, minLiquidityScore: 50 },
-    high: { minProfitBps: 50, maxSpreadBps: 50, minLiquidityScore: 30 },
+    safe: { minProfitBps: 25, maxSpreadBps: 20, maxTotalCostBps: 15, minLiquidityScore: 70 },
+    medium: { minProfitBps: 35, maxSpreadBps: 25, maxTotalCostBps: 18, minLiquidityScore: 60 },
+    high: { minProfitBps: 50, maxSpreadBps: 35, maxTotalCostBps: 25, minLiquidityScore: 40 },
   } as const,
   costs: {
     takerFeeBps: 4,
-    slippageBps: 2,
-    safetyBufferBps: 5,
+    slippageBps: 3,
+    safetyBufferBps: 4,
+    maxTotalCostBps: 15,
   },
   exit: {
     holdingPeriodIntervals: 1,
     maxHoldingHours: 24,
     profitExitThresholdBps: 5,
-    pnlDriftLimitPercent: 2,
-    spreadSpikeMultiplier: 3,
+    pnlDriftLimitPercent: 0.6,     // STRICT for LIVE
+    spreadCollapseThresholdBps: 5,
+    spreadSpikeThresholdBps: 35,
+    dataStaleTimeoutSeconds: 120,
+    profitTargetPercent: 60,
   },
   risk: {
     maxDailyDrawdownEur: 20,
-    maxConcurrentPositions: 20,
+    cautionDrawdownEur: 10,
+    maxConcurrentHedges: 8,
     stressTestMultiplier: 2,
     killSwitchCooldownHours: 24,
+    notionalMatchTolerancePercent: 1,
+    maxLeverage: 2,
+    defaultLeverage: 1,
   },
   worker: {
     scanIntervalSeconds: 60,
     priceUpdateSeconds: 30,
     auditRetentionDays: 30,
+  },
+  dryRun: {
+    enabled: true,  // Default to DRY RUN for safety
+    logOnly: true,
+    mockFills: true,
   },
 };
 
@@ -66,7 +80,8 @@ async function runCycle(
   audit: AuditLog,
   risk: RiskManager,
   positions: PositionManager,
-  engine: OpportunityEngine
+  engine: OpportunityEngine,
+  hedgeExecutor: HedgeExecutor
 ): Promise<void> {
   const cycleStart = Date.now();
   
@@ -83,41 +98,87 @@ async function runCycle(
       return;
     }
 
-    console.log('[Cycle] Starting cycle...');
+    console.log('[Cycle] Starting LIVE hedge cycle...');
 
-    // 3. Simulate funding collection for open positions
+    // 3. Check data freshness (STRICT for LIVE)
+    const lastDataTs = await engine.getLastDataTimestamp();
+    if (lastDataTs) {
+      const dataAgeSeconds = (Date.now() - new Date(lastDataTs).getTime()) / 1000;
+      if (dataAgeSeconds > config.exit.dataStaleTimeoutSeconds) {
+        await audit.log('error', 'DATA_STALE', 'system', null, { 
+          ageSeconds: dataAgeSeconds, 
+          limit: config.exit.dataStaleTimeoutSeconds 
+        });
+        // Don't open new positions, but continue managing existing
+        await positions.updateAllPositions();
+        await positions.checkExitConditions();
+        return;
+      }
+    }
+
+    // 4. Simulate funding collection for open positions
     await positions.simulateFundingCollection();
 
-    // 4. Update existing positions with latest prices
+    // 5. Update existing positions with latest prices
     await positions.updateAllPositions();
 
-    // 5. Check exit conditions
+    // 6. Check exit conditions (STRICT rules for LIVE)
     await positions.checkExitConditions();
 
-    // 6. Scan for new opportunities
-    const opportunities = await engine.scanAndRank();
+    // 7. Check risk level before scanning for new opportunities
+    const riskLevel = await risk.getRiskLevel();
+    if (riskLevel === 'stopped') {
+      await audit.log('warn', 'RISK_STOPPED', 'system', null, { reason: 'Drawdown >= €20' });
+      return;
+    }
     
-    if (opportunities.length === 0) {
-      console.log('[Cycle] No opportunities found');
+    if (riskLevel === 'cautious') {
+      console.log('[Cycle] Risk level CAUTIOUS - not opening new positions');
+      await audit.log('info', 'RISK_CAUTIOUS', 'system', null, { reason: 'Drawdown €10-20' });
       await risk.updateDailyStats();
       return;
     }
 
-    // 7. Select best opportunities within risk budget
+    // 8. Scan for new opportunities
+    const opportunities = await engine.scanAndRank();
+    
+    if (opportunities.length === 0) {
+      console.log('[Cycle] No valid opportunities found');
+      await risk.updateDailyStats();
+      return;
+    }
+
+    // 9. Select best opportunities within risk budget
     const selected = await risk.filterWithinBudget(opportunities);
     
     if (selected.length === 0) {
       console.log('[Cycle] No opportunities within budget');
     } else {
-      console.log(`[Cycle] Opening ${selected.length} position(s)...`);
+      console.log(`[Cycle] Opening ${selected.length} hedge position(s)...`);
       
-      // 8. Open new positions
+      // 10. Execute atomic hedges
       for (const opp of selected) {
-        await positions.openPosition(opp);
+        if (config.dryRun.enabled) {
+          // DRY RUN: Log decision but use mock fills
+          await audit.log('info', 'HEDGE_DECISION_DRYRUN', 'opportunity', null, {
+            symbol: opp.symbol,
+            longExchange: opp.longExchange,
+            shortExchange: opp.shortExchange,
+            netProfitBps: opp.netProfitBps,
+            score: opp.score,
+          });
+        }
+        
+        const result = await hedgeExecutor.executeHedge(opp, config.capital.legSizeEur);
+        
+        if (result.success && result.hedgeId) {
+          // Record in database
+          await positions.openHedgePosition(opp, result);
+        }
       }
     }
 
-    // 9. Update daily stats
+    // 11. Update daily stats
     await risk.updateDailyStats();
 
     const duration = Date.now() - cycleStart;
@@ -131,15 +192,26 @@ async function runCycle(
 
 async function main(): Promise<void> {
   console.log('='.repeat(60));
-  console.log('  DIADONUM AUTOPILOT WORKER');
-  console.log('  Mode: PAPER TRADING');
+  console.log('  DIADONUM FUNDING ARBITRAGE AUTOPILOT');
+  console.log('  Mode: LIVE (Delta-Neutral Hedge)');
+  console.log('  DRY RUN:', config.dryRun.enabled ? 'ENABLED' : 'DISABLED');
   console.log('='.repeat(60));
   console.log('');
   console.log('Configuration:');
   console.log(`  Capital: €${config.capital.totalEur}`);
-  console.log(`  Max Risk: ${config.capital.maxRiskPercent}% (€${config.capital.totalEur * config.capital.maxRiskPercent / 100})`);
-  console.log(`  Position Size: €${config.capital.positionSizeEur}`);
+  console.log(`  Hedge Size: €${config.capital.hedgeSizeEur} (€${config.capital.legSizeEur} per leg)`);
+  console.log(`  Buffer: €${config.capital.bufferEur} (always reserved)`);
+  console.log(`  Max Risk: €${config.risk.maxDailyDrawdownEur} (kill switch)`);
+  console.log(`  Caution: €${config.risk.cautionDrawdownEur} (stop new positions)`);
+  console.log(`  Max Hedges: ${config.risk.maxConcurrentHedges}`);
   console.log(`  Scan Interval: ${config.worker.scanIntervalSeconds}s`);
+  console.log(`  Exchanges: ${config.allowedExchanges.join(', ')}`);
+  console.log('');
+  console.log('Risk Controls:');
+  console.log(`  Min Profit: ${config.thresholds.safe.minProfitBps}bps (SAFE)`);
+  console.log(`  Max Spread: ${config.thresholds.safe.maxSpreadBps}bps`);
+  console.log(`  PnL Drift Limit: ${config.exit.pnlDriftLimitPercent}%`);
+  console.log(`  Data Stale Timeout: ${config.exit.dataStaleTimeoutSeconds}s`);
   console.log('');
 
   // Initialize Supabase
@@ -154,20 +226,24 @@ async function main(): Promise<void> {
   // Initialize components
   const audit = new AuditLog(supabase);
   const risk = new RiskManager(supabase, config, audit);
-  const positions = new PositionManager(supabase, config, audit, risk);
+  const hedgeExecutor = new HedgeExecutor(supabase, audit, config.dryRun.enabled);
+  const positions = new PositionManager(supabase, config, audit, risk, hedgeExecutor);
   const engine = new OpportunityEngine(supabase, {
     costs: config.costs,
     thresholds: config.thresholds,
-    positionSizeEur: config.capital.positionSizeEur,
+    hedgeSizeEur: config.capital.hedgeSizeEur,
     allowedExchanges: config.allowedExchanges,
     fundingIntervals: config.fundingIntervals,
   });
 
   await audit.log('info', 'WORKER_STARTED', 'system', null, {
+    mode: 'live',
+    dryRun: config.dryRun.enabled,
     config: {
       capital: config.capital.totalEur,
-      maxRisk: config.capital.maxRiskPercent,
-      positionSize: config.capital.positionSizeEur,
+      hedgeSize: config.capital.hedgeSizeEur,
+      maxRisk: config.risk.maxDailyDrawdownEur,
+      maxHedges: config.risk.maxConcurrentHedges,
     },
   });
 
@@ -188,7 +264,7 @@ async function main(): Promise<void> {
 
   // Initial run
   console.log('[Worker] Running initial cycle...');
-  await runCycle(supabase, audit, risk, positions, engine);
+  await runCycle(supabase, audit, risk, positions, engine, hedgeExecutor);
 
   // Scheduler loop
   const intervalMs = config.worker.scanIntervalSeconds * 1000;
@@ -196,7 +272,7 @@ async function main(): Promise<void> {
   
   setInterval(async () => {
     if (!isShuttingDown) {
-      await runCycle(supabase, audit, risk, positions, engine);
+      await runCycle(supabase, audit, risk, positions, engine, hedgeExecutor);
     }
   }, intervalMs);
 }

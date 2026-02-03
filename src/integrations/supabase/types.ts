@@ -366,12 +366,14 @@ export type Database = {
           exit_short_price: number | null
           exit_ts: string | null
           funding_collected_eur: number
+          hedge_id: string | null
           id: string
           intervals_collected: number
           leverage: number
           long_exchange: string
           long_market_id: string | null
           mode: string
+          pnl_drift: number | null
           realized_pnl_eur: number | null
           realized_pnl_percent: number | null
           risk_snapshot: Json
@@ -400,12 +402,14 @@ export type Database = {
           exit_short_price?: number | null
           exit_ts?: string | null
           funding_collected_eur?: number
+          hedge_id?: string | null
           id?: string
           intervals_collected?: number
           leverage?: number
           long_exchange: string
           long_market_id?: string | null
           mode?: string
+          pnl_drift?: number | null
           realized_pnl_eur?: number | null
           realized_pnl_percent?: number | null
           risk_snapshot?: Json
@@ -434,12 +438,14 @@ export type Database = {
           exit_short_price?: number | null
           exit_ts?: string | null
           funding_collected_eur?: number
+          hedge_id?: string | null
           id?: string
           intervals_collected?: number
           leverage?: number
           long_exchange?: string
           long_market_id?: string | null
           mode?: string
+          pnl_drift?: number | null
           realized_pnl_eur?: number | null
           realized_pnl_percent?: number | null
           risk_snapshot?: Json
@@ -482,6 +488,7 @@ export type Database = {
         Row: {
           config_snapshot: Json
           daily_drawdown_eur: number
+          dry_run_enabled: boolean | null
           id: string
           is_running: boolean
           kill_switch_active: boolean
@@ -496,6 +503,7 @@ export type Database = {
         Insert: {
           config_snapshot?: Json
           daily_drawdown_eur?: number
+          dry_run_enabled?: boolean | null
           id?: string
           is_running?: boolean
           kill_switch_active?: boolean
@@ -510,6 +518,7 @@ export type Database = {
         Update: {
           config_snapshot?: Json
           daily_drawdown_eur?: number
+          dry_run_enabled?: boolean | null
           id?: string
           is_running?: boolean
           kill_switch_active?: boolean
