@@ -15,8 +15,21 @@ import { useAutopilotStore } from '@/store/autopilotStore';
 import { cn } from '@/lib/utils';
 import { startOfDay, startOfWeek, isAfter } from 'date-fns';
 
+// Config values for reinvestment calculation
+const AUTOPILOT_CONFIG = {
+  maxConcurrentHedges: 8,
+  hedgeSizeEur: 20,
+};
+
 export function QuickStats() {
-  const { positions, totalRealizedPnl, totalFundingCollected } = useAutopilotStore();
+  const { positions, totalRealizedPnl, totalFundingCollected, riskBudget } = useAutopilotStore();
+  
+  // Calculate reinvestment potential
+  const baseMaxPositions = AUTOPILOT_CONFIG.maxConcurrentHedges;
+  const profitEarnedEur = totalRealizedPnl;
+  const hedgeSize = AUTOPILOT_CONFIG.hedgeSizeEur;
+  const additionalSlots = Math.floor(profitEarnedEur / hedgeSize);
+  const effectiveMaxPositions = Math.min(baseMaxPositions + additionalSlots, 12); // Cap at 12
 
   const stats = useMemo(() => {
     const now = new Date();
@@ -172,6 +185,28 @@ export function QuickStats() {
             </div>
           </div>
         )}
+
+        {/* Reinvestment Status */}
+        <div className="pt-2 border-t border-border/50">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">Position Slots</span>
+            <div className="flex items-center gap-2">
+              <span className="font-mono font-semibold">
+                {stats.total.openPositions} / {effectiveMaxPositions}
+              </span>
+              {additionalSlots > 0 && (
+                <Badge variant="outline" className="text-xs bg-success/10 text-success border-success/30">
+                  +{additionalSlots} from profit
+                </Badge>
+              )}
+            </div>
+          </div>
+          {additionalSlots > 0 && (
+            <div className="text-xs text-muted-foreground mt-1">
+              Profit reinvested: €{profitEarnedEur.toFixed(2)} unlocked {additionalSlots} extra slot{additionalSlots > 1 ? 's' : ''}
+            </div>
+          )}
+        </div>
       </CardContent>
     </Card>
   );
