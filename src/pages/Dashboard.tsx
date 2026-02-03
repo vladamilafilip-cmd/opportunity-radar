@@ -21,7 +21,8 @@ import { FundingIntervalBadge } from "@/components/FundingIntervalBadge";
 import { FundingCountdown } from "@/components/FundingCountdown";
 import { APRDisplay } from "@/components/APRDisplay";
 import { FloatingPnL } from "@/components/FloatingPnL";
-import { AutopilotPanel, AutopilotPositions, AutopilotStatus, ExplainDrawer } from "@/components/autopilot";
+import { AutopilotPanel, AutopilotPositions, AutopilotStatus, ExplainDrawer, PersonalRobotWidget, QuickStats, AuditLogViewer } from "@/components/autopilot";
+import { useRobotNotifications } from "@/hooks/useRobotNotifications";
 import { useAutopilotStore } from "@/store/autopilotStore";
 import type { AutopilotPosition } from "@/types/autopilot";
 import {
@@ -84,6 +85,9 @@ export default function Dashboard() {
   const [selectedPeriod, setSelectedPeriod] = useState<string>("8h");
   const [leverage, setLeverage] = useState<number>(1);
   const [explainPosition, setExplainPosition] = useState<AutopilotPosition | null>(null);
+
+  // Initialize robot notifications
+  useRobotNotifications({ enabled: true });
 
   // Period multiplier for profit projection
   const getPeriodMultiplier = (period: string): number => {
@@ -422,16 +426,18 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        {/* Autopilot Control Panel */}
+        {/* Personal Robot Widget - Compact All-in-One Control */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-          <div className="lg:col-span-1">
-            <AutopilotPanel />
+          <div className="lg:col-span-1 space-y-6">
+            <PersonalRobotWidget />
+            <QuickStats />
           </div>
-          <div className="lg:col-span-2">
+          <div className="lg:col-span-2 space-y-6">
             <AutopilotPositions 
               positions={autopilotPositions} 
               onExplain={setExplainPosition}
             />
+            <AuditLogViewer />
           </div>
         </div>
         
