@@ -14,7 +14,7 @@ import {
   Clock,
   Loader2,
   AlertTriangle,
-  Lock
+  Zap
 } from 'lucide-react';
 import { useAutopilotStore } from '@/store/autopilotStore';
 import { BucketAllocation } from './BucketAllocation';
@@ -29,15 +29,15 @@ const modeConfig: Record<AutopilotMode, { label: string; color: string; descript
     color: 'bg-muted text-muted-foreground', 
     description: 'Autopilot disabled' 
   },
-  paper: { 
-    label: 'PAPER', 
+  dryrun: { 
+    label: 'DRY RUN', 
     color: 'bg-warning/20 text-warning border-warning/30', 
-    description: 'Simulated trading' 
+    description: 'Test mode - no real orders' 
   },
   live: { 
     label: 'LIVE', 
-    color: 'bg-destructive/20 text-destructive border-destructive/30', 
-    description: 'Real trading (locked)' 
+    color: 'bg-success/20 text-success border-success/30', 
+    description: 'Delta-neutral hedging' 
   },
 };
 
@@ -45,6 +45,7 @@ export function AutopilotPanel() {
   const {
     mode,
     isRunning,
+    dryRunEnabled,
     killSwitchActive,
     killSwitchReason,
     lastScanTs,
@@ -57,6 +58,7 @@ export function AutopilotPanel() {
     fetchState,
     fetchPositions,
     setMode,
+    setDryRun,
     start,
     stop,
     stopAll,
@@ -81,7 +83,6 @@ export function AutopilotPanel() {
   }, []);
 
   const handleModeChange = async (newMode: AutopilotMode) => {
-    if (newMode === 'live') return; // Locked
     setIsChangingMode(true);
     await setMode(newMode);
     setIsChangingMode(false);
@@ -95,21 +96,27 @@ export function AutopilotPanel() {
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg flex items-center gap-2">
             <Bot className="h-5 w-5 text-primary" />
-            Autopilot Control
+            Funding Arbitrage Bot
           </CardTitle>
-          <Badge className={cn(currentModeConfig.color, "font-mono")}>
-            {currentModeConfig.label}
-          </Badge>
+          <div className="flex items-center gap-2">
+            {dryRunEnabled && mode !== 'off' && (
+              <Badge variant="outline" className="bg-warning/20 text-warning border-warning/30 text-xs">
+                DRY RUN
+              </Badge>
+            )}
+            <Badge className={cn(currentModeConfig.color, "font-mono")}>
+              {currentModeConfig.label}
+            </Badge>
+          </div>
         </div>
       </CardHeader>
       
       <CardContent className="space-y-4">
         {/* Mode Selector */}
         <div className="flex gap-2">
-          {(['off', 'paper', 'live'] as AutopilotMode[]).map((m) => {
+          {(['off', 'dryrun', 'live'] as AutopilotMode[]).map((m) => {
             const config = modeConfig[m];
             const isActive = mode === m;
-            const isLocked = m === 'live';
             
             return (
               <Button
@@ -118,18 +125,28 @@ export function AutopilotPanel() {
                 size="sm"
                 className={cn(
                   "flex-1 gap-1",
-                  isActive && m === 'paper' && "bg-warning text-warning-foreground hover:bg-warning/90",
-                  isLocked && "opacity-50"
+                  isActive && m === 'dryrun' && "bg-warning text-warning-foreground hover:bg-warning/90",
+                  isActive && m === 'live' && "bg-success text-success-foreground hover:bg-success/90"
                 )}
-                disabled={isChangingMode || isLoading || isLocked}
+                disabled={isChangingMode || isLoading}
                 onClick={() => handleModeChange(m)}
               >
-                {isLocked && <Lock className="h-3 w-3" />}
+                {m === 'live' && <Zap className="h-3 w-3" />}
                 {config.label}
               </Button>
             );
           })}
         </div>
+
+        {/* Risk Warning for LIVE */}
+        {mode === 'live' && (
+          <Alert className="bg-warning/10 border-warning/30">
+            <AlertTriangle className="h-4 w-4 text-warning" />
+            <AlertDescription className="text-sm text-warning">
+              <strong>Market-neutral strategy.</strong> Profit is NOT guaranteed. Use at your own risk.
+            </AlertDescription>
+          </Alert>
+        )}
 
         {/* Running Status */}
         {mode !== 'off' && (
@@ -247,7 +264,7 @@ export function AutopilotPanel() {
         {mode === 'off' && (
           <Alert>
             <AlertDescription className="text-sm text-muted-foreground">
-              Autopilot is OFF. Switch to PAPER mode to start simulated trading.
+              Autopilot is OFF. Switch to DRY RUN to test or LIVE for delta-neutral hedging.
             </AlertDescription>
           </Alert>
         )}

@@ -2,7 +2,7 @@
 // Compact status widget for header/navbar
 
 import { Badge } from '@/components/ui/badge';
-import { Bot, Activity, AlertTriangle } from 'lucide-react';
+import { Bot, Activity, AlertTriangle, Zap } from 'lucide-react';
 import { useAutopilotStore } from '@/store/autopilotStore';
 import { cn } from '@/lib/utils';
 
@@ -12,7 +12,7 @@ interface AutopilotStatusProps {
 }
 
 export function AutopilotStatus({ compact = false, onClick }: AutopilotStatusProps) {
-  const { mode, isRunning, killSwitchActive, bucketAllocation } = useAutopilotStore();
+  const { mode, isRunning, killSwitchActive, dryRunEnabled, bucketAllocation } = useAutopilotStore();
 
   const totalPositions = 
     bucketAllocation.safe.current + 
@@ -52,7 +52,7 @@ export function AutopilotStatus({ compact = false, onClick }: AutopilotStatusPro
           <Activity className={cn("text-success animate-pulse", compact ? "h-4 w-4" : "h-5 w-5")} />
           {!compact && (
             <Badge variant="outline" className="bg-success/20 text-success border-success/30">
-              {totalPositions} pos
+              {totalPositions} hedge{totalPositions !== 1 ? 's' : ''}
             </Badge>
           )}
         </>
@@ -64,16 +64,24 @@ export function AutopilotStatus({ compact = false, onClick }: AutopilotStatusPro
       )}
       
       {!compact && (
-        <Badge 
-          variant="outline" 
-          className={cn(
-            "text-xs",
-            mode === 'paper' && "bg-warning/20 text-warning border-warning/30",
-            mode === 'live' && "bg-destructive/20 text-destructive border-destructive/30"
+        <div className="flex items-center gap-1">
+          {dryRunEnabled && (
+            <Badge variant="outline" className="text-xs bg-warning/20 text-warning border-warning/30">
+              DRY
+            </Badge>
           )}
-        >
-          {mode.toUpperCase()}
-        </Badge>
+          <Badge 
+            variant="outline" 
+            className={cn(
+              "text-xs",
+              mode === 'dryrun' && "bg-warning/20 text-warning border-warning/30",
+              mode === 'live' && "bg-success/20 text-success border-success/30"
+            )}
+          >
+            {mode === 'live' && <Zap className="h-2 w-2 mr-1" />}
+            {mode.toUpperCase()}
+          </Badge>
+        </div>
       )}
     </div>
   );
