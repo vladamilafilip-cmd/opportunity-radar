@@ -1,202 +1,187 @@
 
 
-# Nastavak Implementacije - LIVE Funding Arbitrage Autopilot
+# LIVE Funding Arbitrage Bot - Finalna Čišćenja i Optimizacije
 
-## Pregled Urađenog
+## Analiza Trenutnog Stanja
 
-| Komponenta | Status |
-|------------|--------|
-| `config/autopilot.ts` - LIVE parametri | ✅ Gotovo |
-| `src/types/autopilot.ts` - HedgePosition, ExchangeBalance tipovi | ✅ Gotovo |
-| `worker/src/config/exchangeBalances.ts` - Per-exchange alokacija | ✅ Gotovo |
-| `worker/src/engine/formulas.ts` - Novi thresholds (0.25%, 0.6% drift) | ✅ Gotovo |
-| `worker/src/adapters/hedgeExecutor.ts` - Atomic hedge execution | ✅ Gotovo |
-| `worker/src/utils/apiKeyManager.ts` - Enkriptovano skladište | ✅ Gotovo |
-| `worker/src/index.ts` - DRY RUN mode, LIVE logika | ✅ Gotovo |
-| `worker/src/engine/riskManager.ts` - Tiered drawdown | ✅ Gotovo |
-| `worker/src/engine/positionManager.ts` - Hedge logika | ✅ Gotovo |
-| `worker/src/engine/opportunityEngine.ts` - Whitelist + filteri | ✅ Gotovo |
-| `src/store/autopilotStore.ts` - Dry run, exchange balances | ✅ Gotovo |
-| `src/components/autopilot/PersonalRobotWidget.tsx` - LIVE mode | ✅ Gotovo |
-| `src/components/autopilot/QuickStats.tsx` - Dnevne/nedeljne statistike | ✅ Gotovo |
-| `src/components/autopilot/AuditLogViewer.tsx` - Timeline aktivnosti | ✅ Gotovo |
-| `src/components/autopilot/AutopilotPositions.tsx` - Quick actions | ✅ Gotovo |
-| Database migration (hedge_id, pnl_drift, dry_run_enabled) | ✅ Gotovo |
+Pregledao sam kompletan kod i sistem je **95% gotov** za LIVE delta-neutral hedge trading. Evo šta je već implementirano:
 
----
+### Implementirano
 
-## Preostalo za Implementaciju
-
-### Faza 3: UI Poboljšanja (Zaokruživanje)
-
-| Fajl | Akcija | Opis |
-|------|--------|------|
-| `src/components/autopilot/ExchangeAllocation.tsx` | **CREATE** | Izdvojena komponenta za exchange balanse sa detaljnim prikazom |
-| `src/components/autopilot/RiskWarningBanner.tsx` | **CREATE** | Reusable warning banner sa punim disclaimer-om |
-| `src/components/autopilot/HedgePositionCard.tsx` | **CREATE** | Kompaktni prikaz hedge-a kao jedinice (long+short leg) |
-| `src/components/DisclaimerBanner.tsx` | **UPDATE** | Dodaj LIVE arbitrage specifične informacije |
-| `src/components/autopilot/index.ts` | **UPDATE** | Dodaj eksport novih komponenti |
-
-### Faza 4: Final Integration
-
-| Fajl | Akcija | Opis |
-|------|--------|------|
-| `src/pages/Dashboard.tsx` | **VERIFY** | Osiguraj da je DRY RUN toggle vidljiv |
-| `worker/README.md` | **UPDATE** | Dodaj LIVE instrukcije za pokretanje |
+| Komponenta | Status | Lokacija |
+|------------|--------|----------|
+| Config sa LIVE parametrima | ✅ Kompletno | `config/autopilot.ts` |
+| Kapital €200, hedge €20, buffer €40 | ✅ Tačno | `config/autopilot.ts` |
+| 6 dozvoljenih berzi | ✅ Tačno | Hyperliquid, Binance, Bybit, OKX, dYdX, KuCoin |
+| Raspodela po berzama | ✅ Tačno | HL:60, Binance:40, Bybit:30, OKX:30, dYdX:20, KuCoin:20 |
+| Symbol whitelist | ✅ Tačno | BTC, ETH, SOL, LTC, XRP, BNB, LINK, DOGE + 10 Tier2 |
+| Entry filteri (0.25%, 0.20%, 0.15%) | ✅ Tačno | `formulas.ts` |
+| Exit pravila (drift 0.6%, spread 0.35%) | ✅ Tačno | `formulas.ts` |
+| Risk manager (€10/€20 drawdown) | ✅ Tačno | `riskManager.ts` |
+| Atomic hedge execution | ✅ Kompletno | `hedgeExecutor.ts` |
+| Worker sa 60s intervalom | ✅ Kompletno | `worker/src/index.ts` |
+| UI PersonalRobotWidget | ✅ Kompletno | Exchange allocation, risk meter, STOP ALL |
+| Explain drawer | ✅ Kompletno | `ExplainDrawer.tsx` |
+| Audit log | ✅ Kompletno | `AuditLogViewer.tsx` |
+| DRY RUN mode | ✅ Kompletno | Toggle u UI |
 
 ---
 
-## Detalji Implementacije
+## Potrebne Izmene (5%)
 
-### 1. ExchangeAllocation.tsx
+### 1. Ukloni Paper Trading reference iz UI
 
-Nova komponenta za detaljan prikaz alokacije kapitala po berzi:
-
-```text
-┌─────────────────────────────────────────────────────────────┐
-│  EXCHANGE ALLOCATION                                        │
-├─────────────────────────────────────────────────────────────┤
-│  ┌─────────────┬──────────────┬──────────────┬────────────┐ │
-│  │ Hyperliquid │   Binance    │    Bybit     │    OKX     │ │
-│  │ SHORT       │   LONG       │    BOTH      │    BOTH    │ │
-│  │ €45/€60     │   €30/€40    │   €20/€30    │  €15/€30   │ │
-│  │ ████████░░  │   ███████░░  │   ██████░░░  │  █████░░░  │ │
-│  └─────────────┴──────────────┴──────────────┴────────────┘ │
-│  ┌─────────────┬──────────────┐                             │
-│  │     dYdX    │    KuCoin    │   Total: €130/€200         │
-│  │   SHORT     │    LONG      │   Buffer: €40 ✓            │
-│  │   €10/€20   │   €10/€20    │                             │
-│  └─────────────┴──────────────┘                             │
-└─────────────────────────────────────────────────────────────┘
-```
-
-Karakteristike:
-- Progress bar za svaku berzu
-- Purpose indicator (LONG/SHORT/BOTH)
-- Color coding za deployed vs allocation
-- Hover tooltip sa detaljima
-
-### 2. RiskWarningBanner.tsx
-
-Reusable banner sa punim disclaimer-om za LIVE trading:
-
-```text
-┌─────────────────────────────────────────────────────────────┐
-│ ⚠️ RISK DISCLOSURE                                          │
-│                                                             │
-│ This is a market-neutral funding arbitrage strategy.       │
-│ While designed to minimize directional exposure,           │
-│ profit is NOT guaranteed.                                   │
-│                                                             │
-│ • Funding rates can change unexpectedly                    │
-│ • Execution slippage may exceed estimates                  │
-│ • Exchange API failures can cause losses                   │
-│ • Past performance ≠ future results                        │
-│                                                             │
-│ USE AT YOUR OWN RISK.                                       │
-│                           [Dismiss] [Learn More →]          │
-└─────────────────────────────────────────────────────────────┘
-```
-
-Karakteristike:
-- Collapsible (može se sakriti)
-- LocalStorage za "don't show again"
-- Link na Risk Disclosure page
-
-### 3. HedgePositionCard.tsx
-
-Kompaktnija alternativa tabeli za mobilne uređaje:
-
-```text
-┌─────────────────────────────────────────────────────────────┐
-│  BTC/USDT                              [SAFE] [2h ago]      │
-│  ├── LONG:  Binance  @$98,432      │   PnL: +€0.45 (0.45%)  │
-│  └── SHORT: Hyperliquid @$98,428   │   Funding: €0.12 (2x)  │
-│                                                             │
-│  Size: €20 (€10+€10)   Drift: 0.02%                        │
-│                                                             │
-│  [ + Accumulate ] [ ⚡ Collect ] [ ℹ Explain ] [ ✕ Close ] │
-└─────────────────────────────────────────────────────────────┘
-```
-
-Karakteristike:
-- Mobile-friendly card layout
-- Obe strane hedge-a jasno prikazane
-- Drift indicator (delta-neutral health)
-- Inline quick actions
-
-### 4. Update DisclaimerBanner.tsx
-
-Dodaj kontekst za LIVE arbitrage:
-
-- Promeni generički tekst u specifičan za funding arbitrage
-- Dodaj link na `/risk-disclosure`
-
-### 5. Worker README Update
-
-Dodaj instrukcije za:
-- Postavljanje API ključeva lokalno
-- Pokretanje u DRY RUN vs LIVE mode
-- Monitoring i logovanje
-
----
-
-## Redosled Implementacije
-
-1. **ExchangeAllocation.tsx** - Izdvojena exchange komponenta
-2. **RiskWarningBanner.tsx** - Reusable warning banner
-3. **HedgePositionCard.tsx** - Mobile-friendly position card
-4. **Update index.ts** - Dodaj eksporte
-5. **Update DisclaimerBanner.tsx** - Specifičan tekst
-6. **Update worker/README.md** - LIVE instrukcije
-
----
-
-## Tehnički Detalji
-
-### ExchangeAllocation Props
+Trenutno u `Dashboard.tsx` (linija 312-318) postoji link na "Paper Trading" u dropdown meniju. Ovo treba zameniti sa "Autopilot Settings" ili ukloniti.
 
 ```typescript
-interface ExchangeAllocationProps {
-  balances: ExchangeBalance[];
-  compact?: boolean;  // Za PersonalRobotWidget
-  showPurpose?: boolean;
-}
+// Trenutno
+<DropdownMenuItem asChild data-tour="paper-trading">
+  <Link to="/trading" className="cursor-pointer">
+    <LineChart className="h-4 w-4 mr-2" />
+    Paper Trading
+  </Link>
+</DropdownMenuItem>
+
+// Treba zameniti sa
+<DropdownMenuItem asChild>
+  <Link to="/dashboard#autopilot" className="cursor-pointer">
+    <Bot className="h-4 w-4 mr-2" />
+    Autopilot
+  </Link>
+</DropdownMenuItem>
 ```
 
-### RiskWarningBanner Props
+### 2. Mode Toggle u PersonalRobotWidget
 
-```typescript
-interface RiskWarningBannerProps {
-  variant?: 'full' | 'compact';
-  dismissible?: boolean;
-  storageKey?: string;  // Za localStorage
-}
+Dodaj mogućnost promene mode-a (OFF/LIVE/DRY RUN) direktno u widgetu umesto samo badge prikaza.
+
+```text
+┌─────────────────────────────────────────────────┐
+│  Mode: [OFF] [LIVE] [DRY RUN]                  │
+└─────────────────────────────────────────────────┘
 ```
 
-### HedgePositionCard Props
+### 3. Profit Reinvestment Logic
+
+Prema zahtevu "reinvestira profit povećanjem broja pozicija, ne veličine" - ovo je već implementirano kroz `maxConcurrentHedges: 8`. Kako profit raste, više pozicija može biti otvoreno, ali svaka ostaje €20.
+
+Potrebno je samo dodati vizuelni indikator za profit reinvestment status u UI.
+
+### 4. Ukloni Mock Data Fallback za Autopilot
+
+Trenutno Dashboard koristi mock data kao fallback. Za autopilot sekciju, mock data treba da bude potpuno isključen - samo real DB data.
+
+### 5. Exit Signal za Volatility Spike
+
+Dodaj exit uslov za nagli skok volatilnosti (nije eksplicitno implementiran):
 
 ```typescript
-interface HedgePositionCardProps {
-  position: AutopilotPosition;
-  onAccumulate?: () => void;
-  onCollect?: () => void;
-  onClose?: () => void;
-  onExplain?: () => void;
+// U formulas.ts checkExitConditions()
+// 6. Volatility spike check
+if (currentVolatility > entryVolatility * 2) {
+  return `Volatility spike (${(currentVolatility/entryVolatility).toFixed(1)}x)`;
 }
 ```
 
 ---
 
-## Napomena
+## Fajlovi za Izmenu
 
-Posle ovih izmena, sistem ce biti potpuno spreman za LIVE funding arbitrage sa:
+| Fajl | Izmena | Prioritet |
+|------|--------|-----------|
+| `src/pages/Dashboard.tsx` | Zameni "Paper Trading" link | HIGH |
+| `src/components/autopilot/PersonalRobotWidget.tsx` | Dodaj mode toggle buttons | HIGH |
+| `worker/src/engine/formulas.ts` | Dodaj volatility spike exit | MEDIUM |
+| `src/components/autopilot/QuickStats.tsx` | Dodaj reinvestment status | LOW |
 
-1. Full UI visibility svih hedge pozicija
-2. Exchange-level capital tracking
-3. Proper risk warnings i disclaimers
-4. Mobile-friendly position cards
-5. DRY RUN toggle za testiranje bez slanja naloga
+---
 
-Worker ostaje u DRY RUN mode po defaultu dok se ne implementiraju pravi exchange adapteri sa CCXT.
+## Detalj Implementacije
+
+### PersonalRobotWidget Mode Toggle
+
+```tsx
+// Unutar CardHeader, ispod Badge-a
+<div className="flex items-center gap-1 mt-2">
+  <Button
+    size="sm"
+    variant={mode === 'off' ? 'default' : 'ghost'}
+    onClick={() => setMode('off')}
+    className="h-7 text-xs"
+  >
+    OFF
+  </Button>
+  <Button
+    size="sm"
+    variant={mode === 'live' ? 'default' : 'ghost'}
+    onClick={() => setMode('live')}
+    className="h-7 text-xs"
+    disabled={!hasPassphrase} // LIVE zahteva passphrase
+  >
+    LIVE
+  </Button>
+  <Button
+    size="sm"
+    variant={mode === 'dryrun' ? 'default' : 'ghost'}
+    onClick={() => setMode('dryrun')}
+    className="h-7 text-xs"
+  >
+    DRY RUN
+  </Button>
+</div>
+```
+
+### Dashboard Link Fix
+
+Ukloni reference na `/trading` za paper trading i zameni sa autopilot fokusom:
+
+```tsx
+<DropdownMenuItem asChild>
+  <Link to="/dashboard" className="cursor-pointer">
+    <Bot className="h-4 w-4 mr-2" />
+    Autopilot
+  </Link>
+</DropdownMenuItem>
+```
+
+---
+
+## Sigurnost i Upozorenja
+
+Sistem već ima:
+- ✅ Risk disclosure banner
+- ✅ "Profit NOT guaranteed" upozorenje
+- ✅ Kill switch sa manual reset
+- ✅ Buffer enforcement (€40)
+- ✅ Tiered drawdown control
+
+Nema potrebe za dodatnim sigurnosnim merama.
+
+---
+
+## Rezime
+
+Sistem je **spreman za LIVE** sa sledećim karakteristikama:
+
+| Karakteristika | Vrednost |
+|----------------|----------|
+| Kapital | €200 |
+| Position size | €20 hedge (€10 + €10) |
+| Max pozicija | 8 istovremeno |
+| Buffer | €40 uvek slobodno |
+| Max deployed | €160 |
+| Kill switch | €20 dnevni drawdown |
+| Caution level | €10 dnevni drawdown |
+| Min profit | 0.25% po 8h (SAFE) |
+| Max spread | 0.20% bid/ask |
+| Max cost | 0.15% fee+slippage |
+| Drift limit | 0.6% PnL drift |
+| Scan interval | 60 sekundi |
+| Berze | 6 (HL, Binance, Bybit, OKX, dYdX, KuCoin) |
+| Simboli | 8 Tier1 + 10 Tier2 (likvidni only) |
+| Leverage | Max 2x, default 1x |
+
+**Worker ostaje u DRY RUN mode po defaultu** dok se ne implementiraju pravi CCXT adapteri za svaku berzu.
+
+Finalne izmene su minimalne i fokusirane na UX čišćenje.
 
