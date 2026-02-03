@@ -11,6 +11,12 @@ import {
   TableHeader, 
   TableRow 
 } from '@/components/ui/table';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { 
   X, 
   TrendingUp, 
@@ -18,12 +24,15 @@ import {
   Clock, 
   Info,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Plus,
+  Zap
 } from 'lucide-react';
 import type { AutopilotPosition, RiskTier } from '@/types/autopilot';
 import { useAutopilotStore } from '@/store/autopilotStore';
 import { formatDistanceToNow } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 
 interface AutopilotPositionsProps {
   positions: AutopilotPosition[];
@@ -38,7 +47,7 @@ const riskBadgeVariants: Record<RiskTier, { className: string; label: string }> 
 
 export function AutopilotPositions({ positions, onExplain }: AutopilotPositionsProps) {
   const [showClosed, setShowClosed] = useState(false);
-  const { closePosition } = useAutopilotStore();
+  const { closePosition, bucketAllocation } = useAutopilotStore();
   
   const openPositions = positions.filter(p => p.status === 'open');
   const closedPositions = positions.filter(p => p.status !== 'open');
@@ -47,6 +56,27 @@ export function AutopilotPositions({ positions, onExplain }: AutopilotPositionsP
 
   const handleClose = async (positionId: string) => {
     await closePosition(positionId, 'Manual close');
+    toast.success('Position closed');
+  };
+
+  const handleAccumulate = (position: AutopilotPosition) => {
+    // Check if bucket has space
+    const bucket = bucketAllocation[position.risk_tier];
+    if (bucket.current >= bucket.max) {
+      toast.error(`${position.risk_tier.toUpperCase()} bucket is full (${bucket.current}/${bucket.max})`);
+      return;
+    }
+    // In paper mode, this would trigger the worker to open a similar position
+    toast.info('Accumulate signal sent to worker', {
+      description: `Will open similar position on ${position.symbol} when conditions match`,
+    });
+  };
+
+  const handleCollect = (position: AutopilotPosition) => {
+    // Force funding collection (in paper mode, just updates the counter)
+    toast.success('Funding collection triggered', {
+      description: `+€${(position.entry_funding_spread_8h * position.size_eur / 100).toFixed(4)} estimated`,
+    });
   };
 
   return (
@@ -88,7 +118,7 @@ export function AutopilotPositions({ positions, onExplain }: AutopilotPositionsP
                   <TableHead className="text-right">Funding</TableHead>
                   <TableHead>Risk</TableHead>
                   <TableHead>Time</TableHead>
-                  <TableHead className="w-[80px]"></TableHead>
+                  <TableHead className="w-[120px]">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -160,28 +190,73 @@ export function AutopilotPositions({ positions, onExplain }: AutopilotPositionsP
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-1">
-                          {onExplain && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7"
-                              onClick={() => onExplain(position)}
-                            >
-                              <Info className="h-3 w-3" />
-                            </Button>
-                          )}
-                          {position.status === 'open' && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 text-destructive hover:text-destructive"
-                              onClick={() => handleClose(position.id)}
-                            >
-                              <X className="h-3 w-3" />
-                            </Button>
-                          )}
-                        </div>
+                        <TooltipProvider>
+                          <div className="flex items-center gap-1">
+                            {position.status === 'open' && (
+                              <>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-7 w-7 text-primary hover:text-primary"
+                                      onClick={() => handleAccumulate(position)}
+                                    >
+                                      <Plus className="h-3 w-3" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Accumulate (add size)</TooltipContent>
+                                </Tooltip>
+                                
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-7 w-7 text-success hover:text-success"
+                                      onClick={() => handleCollect(position)}
+                                    >
+                                      <Zap className="h-3 w-3" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Collect funding now</TooltipContent>
+                                </Tooltip>
+                              </>
+                            )}
+                            
+                            {onExplain && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7"
+                                    onClick={() => onExplain(position)}
+                                  >
+                                    <Info className="h-3 w-3" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Explain position</TooltipContent>
+                              </Tooltip>
+                            )}
+                            
+                            {position.status === 'open' && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7 text-destructive hover:text-destructive"
+                                    onClick={() => handleClose(position.id)}
+                                  >
+                                    <X className="h-3 w-3" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Close position</TooltipContent>
+                              </Tooltip>
+                            )}
+                          </div>
+                        </TooltipProvider>
                       </TableCell>
                     </TableRow>
                   );

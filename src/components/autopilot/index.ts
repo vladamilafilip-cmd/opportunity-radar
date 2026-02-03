@@ -7,3 +7,6 @@ export { AutopilotPositions } from './AutopilotPositions';
 export { BucketAllocation } from './BucketAllocation';
 export { RiskBudgetDisplay } from './RiskBudgetDisplay';
 export { ExplainDrawer } from './ExplainDrawer';
+export { PersonalRobotWidget } from './PersonalRobotWidget';
+export { QuickStats } from './QuickStats';
+export { AuditLogViewer } from './AuditLogViewer';
