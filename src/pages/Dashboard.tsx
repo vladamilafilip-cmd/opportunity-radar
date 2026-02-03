@@ -45,7 +45,8 @@ import {
   Radar, 
   TrendingUp, 
   ArrowLeftRight, 
-  LineChart, 
+  Bot, 
+  LineChart,
   User,
   Settings,
   LogOut,
@@ -309,10 +310,10 @@ export default function Dashboard() {
                   <p className="text-xs text-primary mt-1">Full Access</p>
                 </div>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem asChild data-tour="paper-trading">
-                  <Link to="/trading" className="cursor-pointer">
-                    <LineChart className="h-4 w-4 mr-2" />
-                    Paper Trading
+                <DropdownMenuItem asChild data-tour="autopilot">
+                  <Link to="/dashboard#autopilot" className="cursor-pointer">
+                    <Bot className="h-4 w-4 mr-2" />
+                    Autopilot
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>

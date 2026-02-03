@@ -45,6 +45,7 @@ export function PersonalRobotWidget() {
     stop,
     stopAll,
     resetKillSwitch,
+    setMode,
     subscribeToState,
     subscribeToPositions,
   } = useAutopilotStore();
@@ -70,10 +71,8 @@ export function PersonalRobotWidget() {
     fetchPositions();
   };
 
-  const modeColor = {
-    off: 'bg-muted text-muted-foreground',
-    dryrun: 'bg-warning/20 text-warning border-warning/30',
-    live: 'bg-success/20 text-success border-success/30',
+  const handleModeChange = (newMode: 'off' | 'dryrun' | 'live') => {
+    setMode(newMode);
   };
 
   return (
@@ -84,17 +83,42 @@ export function PersonalRobotWidget() {
             <Bot className="h-5 w-5 text-primary" />
             FUNDING ARBITRAGE BOT
           </CardTitle>
-          <div className="flex items-center gap-2">
-            {dryRunEnabled && mode !== 'off' && (
-              <Badge variant="outline" className="bg-warning/20 text-warning border-warning/30 text-xs">
-                DRY RUN
-              </Badge>
-            )}
-            <Badge className={cn('uppercase font-mono', modeColor[mode])}>
-              {mode === 'live' && <Zap className="h-3 w-3 mr-1" />}
-              {mode}
+          {mode === 'live' && (
+            <Badge className="bg-success/20 text-success border-success/30 uppercase font-mono">
+              <Zap className="h-3 w-3 mr-1" />
+              LIVE
             </Badge>
-          </div>
+          )}
+        </div>
+        
+        {/* Mode Toggle Buttons */}
+        <div className="flex items-center gap-1 mt-2">
+          <Button
+            size="sm"
+            variant={mode === 'off' ? 'default' : 'ghost'}
+            onClick={() => handleModeChange('off')}
+            className="h-7 text-xs"
+          >
+            OFF
+          </Button>
+          <Button
+            size="sm"
+            variant={mode === 'live' ? 'default' : 'ghost'}
+            onClick={() => handleModeChange('live')}
+            className="h-7 text-xs"
+            disabled={killSwitchActive}
+          >
+            <Zap className="h-3 w-3 mr-1" />
+            LIVE
+          </Button>
+          <Button
+            size="sm"
+            variant={mode === 'dryrun' ? 'secondary' : 'ghost'}
+            onClick={() => handleModeChange('dryrun')}
+            className={cn("h-7 text-xs", mode === 'dryrun' && "bg-warning/20 text-warning")}
+          >
+            DRY RUN
+          </Button>
         </div>
       </CardHeader>
       

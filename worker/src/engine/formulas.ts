@@ -329,7 +329,8 @@ export function checkExitConditions(
     spreadCollapseThresholdBps: number;
     spreadSpikeThresholdBps: number;
     profitTargetPercent: number;
-  }
+  },
+  volatilityData?: { current: number; entry: number }
 ): string | null {
   // 1. Max holding time
   if (hoursHeld >= config.maxHoldingHours) {
@@ -362,6 +363,14 @@ export function checkExitConditions(
   // 5. Spread spike (liquidity deterioration)
   if (currentSpreadBps > config.spreadSpikeThresholdBps) {
     return `Spread spiked to ${currentSpreadBps.toFixed(1)}bps`;
+  }
+  
+  // 6. Volatility spike check (2x increase triggers exit)
+  if (volatilityData && volatilityData.entry > 0) {
+    const volatilityRatio = volatilityData.current / volatilityData.entry;
+    if (volatilityRatio > 2) {
+      return `Volatility spike (${volatilityRatio.toFixed(1)}x increase)`;
+    }
   }
   
   return null;
