@@ -1,5 +1,5 @@
 // worker/src/engine/opportunityEngine.ts
-// Scans market data and ranks opportunities
+// Scans market data and ranks opportunities for LIVE delta-neutral hedging
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { 
@@ -10,6 +10,11 @@ import {
   type CostConfig,
   type ThresholdConfig
 } from './formulas.js';
+import { isValidHedgePair, getEffectiveFeeBps } from '../config/exchangeBalances.js';
+
+// Symbol whitelist
+const TIER1_SYMBOLS = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE', 'BNB', 'LINK', 'LTC'];
+const TIER2_SYMBOLS = ['ADA', 'AVAX', 'MATIC', 'DOT', 'ATOM', 'UNI', 'AAVE', 'ARB', 'OP', 'SUI'];
 
 interface MetricRow {
   id: string;
@@ -21,6 +26,7 @@ interface MetricRow {
   mark_price: number;
   spread_bps: number;
   liquidity_score: number;
+  ts: string;
   symbol: {
     id: string;
     display_name: string;
@@ -40,7 +46,7 @@ interface MetricRow {
 interface EngineConfig {
   costs: CostConfig;
   thresholds: Record<RiskTier, ThresholdConfig>;
-  positionSizeEur: number;
+  hedgeSizeEur: number;
   allowedExchanges: string[];
   fundingIntervals: Record<string, number>;
 }
@@ -48,10 +54,26 @@ interface EngineConfig {
 export class OpportunityEngine {
   private supabase: SupabaseClient;
   private config: EngineConfig;
+  private lastDataTs: string | null = null;
 
   constructor(supabase: SupabaseClient, config: EngineConfig) {
     this.supabase = supabase;
     this.config = config;
+  }
+
+  /**
+   * Get timestamp of last data (for stale check)
+   */
+  getLastDataTimestamp(): string | null {
+    return this.lastDataTs;
+  }
+
+  /**
+   * Check if symbol is whitelisted
+   */
+  private isSymbolWhitelisted(displayName: string): boolean {
+    const base = displayName.toUpperCase().replace(/USDT?$/, '').replace(/PERP$/, '');
+    return TIER1_SYMBOLS.includes(base) || TIER2_SYMBOLS.includes(base);
   }
 
   /**
@@ -70,6 +92,7 @@ export class OpportunityEngine {
         mark_price,
         spread_bps,
         liquidity_score,
+        ts,
         symbol:symbols(id, display_name, is_meme, volatility_multiplier),
         exchange:exchanges(id, code),
         market:markets(id, exchange_symbol)
@@ -80,6 +103,11 @@ export class OpportunityEngine {
     if (error) {
       console.error('[OpportunityEngine] Failed to fetch metrics:', error);
       return [];
+    }
+
+    // Track latest timestamp
+    if (data && data.length > 0) {
+      this.lastDataTs = data[0].ts;
     }
 
     return (data || []) as unknown as MetricRow[];
@@ -103,10 +131,10 @@ export class OpportunityEngine {
   }
 
   /**
-   * Scan and rank opportunities
+   * Scan and rank opportunities with STRICT LIVE filters
    */
   async scanAndRank(): Promise<OpportunityCalc[]> {
-    console.log('[OpportunityEngine] Starting scan...');
+    console.log('[OpportunityEngine] Starting LIVE scan...');
     
     const metrics = await this.fetchLatestMetrics();
     if (metrics.length === 0) {
@@ -116,16 +144,24 @@ export class OpportunityEngine {
 
     console.log(`[OpportunityEngine] Fetched ${metrics.length} metrics`);
 
-    // Group by symbol
     const bySymbol = this.groupBySymbol(metrics);
     const opportunities: OpportunityCalc[] = [];
 
-    // For each symbol, find best long/short pair
     for (const [symbolId, symbolMetrics] of bySymbol) {
-      if (symbolMetrics.length < 2) continue; // Need at least 2 exchanges
+      if (symbolMetrics.length < 2) continue;
 
       const symbol = symbolMetrics[0].symbol;
       if (!symbol) continue;
+
+      // STRICT: Skip meme coins
+      if (symbol.is_meme) {
+        continue;
+      }
+
+      // STRICT: Only whitelisted symbols
+      if (!this.isSymbolWhitelisted(symbol.display_name)) {
+        continue;
+      }
 
       // Filter by allowed exchanges
       const allowedMetrics = symbolMetrics.filter(m => 
@@ -134,14 +170,13 @@ export class OpportunityEngine {
 
       if (allowedMetrics.length < 2) continue;
 
-      // Determine risk tier for this symbol
       const riskTier = determineRiskTier(
         symbol.is_meme || false,
         symbol.volatility_multiplier || 1,
         Math.max(...allowedMetrics.map(m => m.liquidity_score || 0))
       );
 
-      // Find all valid pairs
+      // Find all valid hedge pairs
       for (let i = 0; i < allowedMetrics.length; i++) {
         for (let j = 0; j < allowedMetrics.length; j++) {
           if (i === j) continue;
@@ -149,18 +184,29 @@ export class OpportunityEngine {
           const longMetric = allowedMetrics[i];
           const shortMetric = allowedMetrics[j];
 
-          // Skip if same exchange
           if (longMetric.exchange_id === shortMetric.exchange_id) continue;
 
-          // Calculate opportunity
+          const longExchange = longMetric.exchange?.code || 'unknown';
+          const shortExchange = shortMetric.exchange?.code || 'unknown';
+
+          // STRICT: Validate hedge pair
+          if (!isValidHedgePair(longExchange, shortExchange)) continue;
+
+          // Use exchange-specific fees
+          const effectiveFeeBps = getEffectiveFeeBps(longExchange, shortExchange);
+          const costs = {
+            ...this.config.costs,
+            takerFeeBps: effectiveFeeBps / 2, // Split between legs
+          };
+
           const opp = calculateOpportunity(
             symbol.display_name,
             symbolId,
-            longMetric.exchange?.code || 'unknown',
-            shortMetric.exchange?.code || 'unknown',
+            longExchange,
+            shortExchange,
             longMetric.market_id,
             shortMetric.market_id,
-            longMetric.funding_rate_8h / 100, // Convert from percent to decimal
+            longMetric.funding_rate_8h / 100,
             shortMetric.funding_rate_8h / 100,
             longMetric.funding_interval_hours || 8,
             shortMetric.funding_interval_hours || 8,
@@ -169,12 +215,12 @@ export class OpportunityEngine {
             (longMetric.spread_bps + shortMetric.spread_bps) / 2,
             (longMetric.liquidity_score + shortMetric.liquidity_score) / 2,
             riskTier,
-            this.config.costs,
+            costs,
             this.config.thresholds,
-            this.config.positionSizeEur
+            this.config.hedgeSizeEur
           );
 
-          if (opp) {
+          if (opp && opp.isValid) {
             opportunities.push(opp);
           }
         }
@@ -184,9 +230,10 @@ export class OpportunityEngine {
     // Sort by score (descending)
     opportunities.sort((a, b) => b.score - a.score);
 
-    console.log(`[OpportunityEngine] Found ${opportunities.length} opportunities`);
+    // Log results
+    const validCount = opportunities.filter(o => o.isValid).length;
+    console.log(`[OpportunityEngine] Found ${validCount} valid opportunities`);
     
-    // Log top 5
     opportunities.slice(0, 5).forEach((opp, i) => {
       console.log(`  ${i + 1}. ${opp.symbol} (${opp.longExchange}/${opp.shortExchange}): Score ${opp.score}, Net ${opp.netProfitBps.toFixed(1)}bps, APR ${opp.apr.toFixed(0)}%`);
     });

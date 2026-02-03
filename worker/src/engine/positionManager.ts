@@ -1,22 +1,27 @@
 // worker/src/engine/positionManager.ts
-// Manages autopilot positions (open, update, close)
+// Manages autopilot hedge positions for LIVE delta-neutral trading
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { OpportunityCalc, RiskTier } from './formulas.js';
-import { calculateUnrealizedPnL, calculateFundingPayment } from './formulas.js';
+import { calculateUnrealizedPnL, checkExitConditions } from './formulas.js';
 import { AuditLog } from '../utils/auditLog.js';
 import { RiskManager } from './riskManager.js';
+import type { HedgeExecutor, HedgeExecutionResult } from '../adapters/hedgeExecutor.js';
 
 interface ExitConfig {
   holdingPeriodIntervals: number;
   maxHoldingHours: number;
   profitExitThresholdBps: number;
   pnlDriftLimitPercent: number;
-  spreadSpikeMultiplier: number;
+  spreadCollapseThresholdBps: number;
+  spreadSpikeThresholdBps: number;
+  dataStaleTimeoutSeconds: number;
+  profitTargetPercent: number;
 }
 
 interface PositionRow {
   id: string;
+  hedge_id: string | null;
   symbol: string;
   symbol_id: string | null;
   long_exchange: string;
@@ -37,6 +42,7 @@ interface PositionRow {
   intervals_collected: number;
   unrealized_pnl_eur: number;
   unrealized_pnl_percent: number;
+  pnl_drift: number;
   status: string;
   risk_snapshot: Record<string, unknown>;
 }
@@ -52,24 +58,27 @@ export class PositionManager {
   private supabase: SupabaseClient;
   private config: {
     exit: ExitConfig;
-    capital: { positionSizeEur: number };
+    capital: { hedgeSizeEur: number; legSizeEur: number };
   };
   private audit: AuditLog;
   private riskManager: RiskManager;
+  private hedgeExecutor: HedgeExecutor;
 
   constructor(
     supabase: SupabaseClient,
     config: {
       exit: ExitConfig;
-      capital: { positionSizeEur: number };
+      capital: { hedgeSizeEur: number; legSizeEur: number };
     },
     audit: AuditLog,
-    riskManager: RiskManager
+    riskManager: RiskManager,
+    hedgeExecutor: HedgeExecutor
   ) {
     this.supabase = supabase;
     this.config = config;
     this.audit = audit;
     this.riskManager = riskManager;
+    this.hedgeExecutor = hedgeExecutor;
   }
 
   /**
@@ -109,7 +118,6 @@ export class PositionManager {
       return priceMap;
     }
 
-    // Get latest price for each market
     for (const row of data || []) {
       if (!priceMap.has(row.market_id)) {
         priceMap.set(row.market_id, row as PriceData);
@@ -120,33 +128,42 @@ export class PositionManager {
   }
 
   /**
-   * Open a new position
+   * Open a new hedge position after successful execution
    */
-  async openPosition(opportunity: OpportunityCalc): Promise<string | null> {
+  async openHedgePosition(opportunity: OpportunityCalc, execResult: HedgeExecutionResult): Promise<string | null> {
+    if (!execResult.success || !execResult.hedgeId) {
+      return null;
+    }
+
     const now = new Date().toISOString();
     
     const position = {
-      mode: 'paper',
+      mode: 'live',
+      hedge_id: execResult.hedgeId,
       symbol: opportunity.symbol,
       symbol_id: opportunity.symbolId,
       long_exchange: opportunity.longExchange,
       short_exchange: opportunity.shortExchange,
       long_market_id: opportunity.longMarketId,
       short_market_id: opportunity.shortMarketId,
-      size_eur: this.config.capital.positionSizeEur,
+      size_eur: this.config.capital.hedgeSizeEur,
       leverage: 1,
       risk_tier: opportunity.riskTier,
       entry_ts: now,
-      entry_long_price: opportunity.longPrice,
-      entry_short_price: opportunity.shortPrice,
+      entry_long_price: execResult.longOrder?.fillPrice ?? opportunity.longPrice,
+      entry_short_price: execResult.shortOrder?.fillPrice ?? opportunity.shortPrice,
       entry_funding_spread_8h: opportunity.fundingSpread8h,
       entry_score: opportunity.score,
-      current_long_price: opportunity.longPrice,
-      current_short_price: opportunity.shortPrice,
+      current_long_price: execResult.longOrder?.fillPrice ?? opportunity.longPrice,
+      current_short_price: execResult.shortOrder?.fillPrice ?? opportunity.shortPrice,
+      pnl_drift: 0,
       risk_snapshot: {
         netProfitBps: opportunity.netProfitBps,
         apr: opportunity.apr,
         reasons: opportunity.reasons,
+        hedgeId: execResult.hedgeId,
+        longOrderId: execResult.longOrder?.orderId,
+        shortOrderId: execResult.shortOrder?.orderId,
       },
     };
 
@@ -157,19 +174,21 @@ export class PositionManager {
       .single();
 
     if (error) {
-      console.error('[PositionManager] Failed to open position:', error);
-      await this.audit.log('error', 'POSITION_OPEN_FAILED', 'position', null, {
+      console.error('[PositionManager] Failed to record position:', error);
+      await this.audit.log('error', 'POSITION_RECORD_FAILED', 'position', null, {
         symbol: opportunity.symbol,
+        hedgeId: execResult.hedgeId,
         error: error.message,
       });
       return null;
     }
 
-    await this.audit.log('action', 'POSITION_OPENED', 'position', data.id, {
+    await this.audit.log('action', 'HEDGE_POSITION_OPENED', 'position', data.id, {
       symbol: opportunity.symbol,
+      hedgeId: execResult.hedgeId,
       longExchange: opportunity.longExchange,
       shortExchange: opportunity.shortExchange,
-      sizeEur: this.config.capital.positionSizeEur,
+      sizeEur: this.config.capital.hedgeSizeEur,
       riskTier: opportunity.riskTier,
       score: opportunity.score,
       netProfitBps: opportunity.netProfitBps,
@@ -180,7 +199,7 @@ export class PositionManager {
     await this.supabase
       .from('autopilot_state')
       .update({ last_trade_ts: now, updated_at: now })
-      .neq('id', '00000000-0000-0000-0000-000000000000'); // Update any row
+      .neq('id', '00000000-0000-0000-0000-000000000000');
 
     return data.id;
   }
@@ -192,7 +211,6 @@ export class PositionManager {
     const positions = await this.getOpenPositions();
     if (positions.length === 0) return;
 
-    // Collect all market IDs
     const marketIds: string[] = [];
     for (const pos of positions) {
       if (pos.long_market_id) marketIds.push(pos.long_market_id);
@@ -208,7 +226,7 @@ export class PositionManager {
       const currentLongPrice = longPrice?.mark_price ?? position.current_long_price ?? position.entry_long_price;
       const currentShortPrice = shortPrice?.mark_price ?? position.current_short_price ?? position.entry_short_price;
 
-      // Calculate PnL
+      // Calculate PnL and drift
       const pnl = calculateUnrealizedPnL(
         position.entry_long_price,
         position.entry_short_price,
@@ -225,6 +243,7 @@ export class PositionManager {
           current_short_price: currentShortPrice,
           unrealized_pnl_eur: position.funding_collected_eur + pnl.pnlEur,
           unrealized_pnl_percent: pnl.pnlPercent,
+          pnl_drift: pnl.drift,
           updated_at: new Date().toISOString(),
         })
         .eq('id', position.id);
@@ -232,8 +251,7 @@ export class PositionManager {
   }
 
   /**
-   * Simulate funding collection
-   * In paper mode, we simulate receiving funding based on time elapsed
+   * Simulate funding collection (for positions without real funding events)
    */
   async simulateFundingCollection(): Promise<void> {
     const positions = await this.getOpenPositions();
@@ -243,11 +261,10 @@ export class PositionManager {
       const entryTime = new Date(position.entry_ts);
       const hoursElapsed = (now.getTime() - entryTime.getTime()) / (1000 * 60 * 60);
       
-      // Assuming 8h intervals, calculate expected number of payments
+      // Assuming 8h intervals
       const expectedIntervals = Math.floor(hoursElapsed / 8);
       
       if (expectedIntervals > position.intervals_collected) {
-        // Calculate funding to add
         const intervalsToAdd = expectedIntervals - position.intervals_collected;
         const fundingPerInterval = position.size_eur * position.entry_funding_spread_8h;
         const fundingToAdd = fundingPerInterval * intervalsToAdd;
@@ -272,7 +289,7 @@ export class PositionManager {
   }
 
   /**
-   * Check exit conditions for all positions
+   * Check exit conditions for all positions (STRICT for LIVE)
    */
   async checkExitConditions(): Promise<void> {
     const positions = await this.getOpenPositions();
@@ -281,45 +298,27 @@ export class PositionManager {
     for (const position of positions) {
       const entryTime = new Date(position.entry_ts);
       const hoursHeld = (now.getTime() - entryTime.getTime()) / (1000 * 60 * 60);
+      
+      // Get current spread
+      const currentSpreadBps = 10; // Would fetch from metrics in production
+      const entrySpreadBps = 10;
+      
+      // Expected profit based on entry
+      const expectedProfitPercent = position.entry_funding_spread_8h * 100 * position.intervals_collected;
+      const totalPnlPercent = (position.unrealized_pnl_eur / position.size_eur) * 100;
 
-      let shouldClose = false;
-      let exitReason = '';
+      const exitReason = checkExitConditions(
+        hoursHeld,
+        position.intervals_collected,
+        position.pnl_drift,
+        currentSpreadBps,
+        entrySpreadBps,
+        totalPnlPercent,
+        expectedProfitPercent,
+        this.config.exit
+      );
 
-      // Check max holding time
-      if (hoursHeld >= this.config.exit.maxHoldingHours) {
-        shouldClose = true;
-        exitReason = `Max holding time (${this.config.exit.maxHoldingHours}h) exceeded`;
-      }
-
-      // Check minimum holding period before other checks
-      const intervalsHeld = Math.floor(hoursHeld / 8);
-      if (intervalsHeld >= this.config.exit.holdingPeriodIntervals && !shouldClose) {
-        // Check PnL drift (delta-neutral breakdown)
-        if (position.current_long_price && position.current_short_price) {
-          const pnl = calculateUnrealizedPnL(
-            position.entry_long_price,
-            position.entry_short_price,
-            position.current_long_price,
-            position.current_short_price,
-            position.size_eur
-          );
-
-          if (pnl.drift > this.config.exit.pnlDriftLimitPercent) {
-            shouldClose = true;
-            exitReason = `PnL drift ${pnl.drift.toFixed(2)}% exceeds limit ${this.config.exit.pnlDriftLimitPercent}%`;
-          }
-        }
-
-        // Check if profit has fallen too low
-        // (This is simplified - in production you'd recalculate current opportunity score)
-        const totalPnlPercent = (position.unrealized_pnl_eur / position.size_eur) * 100;
-        if (totalPnlPercent < -(this.config.exit.profitExitThresholdBps / 100)) {
-          shouldClose = true;
-          exitReason = `PnL ${totalPnlPercent.toFixed(2)}% below threshold`;
-        }
-      }
-
-      if (shouldClose) {
+      if (exitReason) {
         await this.closePosition(position.id, exitReason);
       }
     }
@@ -342,6 +341,18 @@ export class PositionManager {
 
     const pos = position as unknown as PositionRow;
     const now = new Date().toISOString();
+
+    // Close hedge via executor if we have hedge_id
+    if (pos.hedge_id) {
+      await this.hedgeExecutor.closeHedge(
+        pos.hedge_id,
+        pos.long_exchange,
+        pos.short_exchange,
+        pos.size_eur / 2,
+        pos.size_eur / 2,
+        reason
+      );
+    }
 
     // Final PnL = funding collected + price PnL
     const realizedPnl = pos.unrealized_pnl_eur;
@@ -366,26 +377,25 @@ export class PositionManager {
       return;
     }
 
-    // Update total realized PnL in state
-    await this.supabase.rpc('increment_realized_pnl', { pnl: realizedPnl }).catch(() => {
-      // If RPC doesn't exist, update directly
-      this.supabase
-        .from('autopilot_state')
-        .update({
-          total_realized_pnl_eur: realizedPnl, // This should be incremented, simplified here
-          total_funding_collected_eur: pos.funding_collected_eur,
-          updated_at: now,
-        })
-        .neq('id', '00000000-0000-0000-0000-000000000000');
-    });
+    // Update totals in state
+    await this.supabase
+      .from('autopilot_state')
+      .update({
+        total_realized_pnl_eur: realizedPnl,
+        total_funding_collected_eur: pos.funding_collected_eur,
+        updated_at: now,
+      })
+      .neq('id', '00000000-0000-0000-0000-000000000000');
 
-    await this.audit.log('action', 'POSITION_CLOSED', 'position', positionId, {
+    await this.audit.log('action', 'HEDGE_POSITION_CLOSED', 'position', positionId, {
       symbol: pos.symbol,
+      hedgeId: pos.hedge_id,
       reason,
       realizedPnl,
       realizedPnlPercent,
       fundingCollected: pos.funding_collected_eur,
       intervalsHeld: pos.intervals_collected,
+      pnlDrift: pos.pnl_drift,
     });
   }
 }

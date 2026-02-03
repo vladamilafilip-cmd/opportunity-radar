@@ -1,15 +1,21 @@
 // worker/src/engine/riskManager.ts
-// Risk management and kill switch logic
+// Risk management and kill switch logic for LIVE delta-neutral hedging
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { OpportunityCalc, RiskTier } from './formulas.js';
 import { AuditLog } from '../utils/auditLog.js';
 
+type RiskLevel = 'normal' | 'cautious' | 'stopped';
+
 interface RiskConfig {
   maxDailyDrawdownEur: number;
-  maxConcurrentPositions: number;
+  cautionDrawdownEur: number;
+  maxConcurrentHedges: number;
   stressTestMultiplier: number;
   killSwitchCooldownHours: number;
+  notionalMatchTolerancePercent: number;
+  maxLeverage: number;
+  defaultLeverage: number;
 }
 
 interface BucketConfig {
@@ -20,7 +26,10 @@ interface BucketConfig {
 interface CapitalConfig {
   totalEur: number;
   maxRiskPercent: number;
-  positionSizeEur: number;
+  hedgeSizeEur: number;
+  legSizeEur: number;
+  bufferEur: number;
+  maxDeployedEur: number;
 }
 
 interface Position {
@@ -29,6 +38,7 @@ interface Position {
   risk_tier: RiskTier;
   size_eur: number;
   unrealized_pnl_eur: number;
+  pnl_drift: number;
   status: string;
 }
 
@@ -36,6 +46,7 @@ interface AutopilotState {
   id: string;
   mode: string;
   is_running: boolean;
+  dry_run_enabled: boolean;
   kill_switch_active: boolean;
   kill_switch_reason: string | null;
   daily_drawdown_eur: number;
@@ -82,10 +93,9 @@ export class RiskManager {
     }
 
     if (!data) {
-      // Create initial state
       const { data: newState, error: insertError } = await this.supabase
         .from('autopilot_state')
-        .insert({ mode: 'paper', is_running: false })
+        .insert({ mode: 'live', is_running: false })
         .select()
         .single();
 
@@ -107,7 +117,7 @@ export class RiskManager {
   async getOpenPositions(): Promise<Position[]> {
     const { data, error } = await this.supabase
       .from('autopilot_positions')
-      .select('id, symbol, risk_tier, size_eur, unrealized_pnl_eur, status')
+      .select('id, symbol, risk_tier, size_eur, unrealized_pnl_eur, pnl_drift, status')
       .eq('status', 'open');
 
     if (error) {
@@ -135,6 +145,20 @@ export class RiskManager {
   }
 
   /**
+   * Get current risk level based on drawdown
+   */
+  async getRiskLevel(): Promise<RiskLevel> {
+    const state = await this.getState();
+    if (!state) return 'stopped';
+    
+    const drawdown = Math.abs(state.daily_drawdown_eur);
+    
+    if (drawdown >= this.config.risk.maxDailyDrawdownEur) return 'stopped';
+    if (drawdown >= this.config.risk.cautionDrawdownEur) return 'cautious';
+    return 'normal';
+  }
+
+  /**
    * Count positions by bucket
    */
   private countByBucket(positions: Position[]): Record<RiskTier, number> {
@@ -152,15 +176,28 @@ export class RiskManager {
     let totalExposure = positions.reduce((sum, p) => sum + p.size_eur, 0);
     
     if (newOpp) {
-      totalExposure += this.config.capital.positionSizeEur;
+      totalExposure += this.config.capital.hedgeSizeEur;
     }
 
-    // Stress test: assume 2% adverse move on all positions
     return totalExposure * (this.config.risk.stressTestMultiplier / 100);
   }
 
   /**
-   * Filter opportunities within budget constraints
+   * Check if we can open a new hedge
+   */
+  private canOpenNewHedge(positions: Position[], bucketCounts: Record<RiskTier, number>): boolean {
+    // Check total hedge count
+    if (positions.length >= this.config.risk.maxConcurrentHedges) return false;
+    
+    // Check deployed capital
+    const deployed = positions.reduce((sum, p) => sum + p.size_eur, 0);
+    if (deployed + this.config.capital.hedgeSizeEur > this.config.capital.maxDeployedEur) return false;
+    
+    return true;
+  }
+
+  /**
+   * Filter opportunities within budget constraints (STRICT for LIVE)
    */
   async filterWithinBudget(opportunities: OpportunityCalc[]): Promise<OpportunityCalc[]> {
     const positions = await this.getOpenPositions();
@@ -170,33 +207,28 @@ export class RiskManager {
     // Track used symbols (max 1 position per symbol)
     const usedSymbols = new Set(positions.map(p => p.symbol));
 
-    // Calculate current exposure
-    const currentExposure = positions.reduce((sum, p) => sum + p.size_eur, 0);
-    const maxExposure = this.config.capital.totalEur * (this.config.capital.maxRiskPercent / 100);
+    // Check if we can open new positions at all
+    if (!this.canOpenNewHedge(positions, bucketCounts)) {
+      return [];
+    }
 
     for (const opp of opportunities) {
+      // Only valid opportunities
+      if (!opp.isValid) continue;
+
       // Skip if symbol already has position
-      if (usedSymbols.has(opp.symbol)) {
-        continue;
-      }
+      if (usedSymbols.has(opp.symbol)) continue;
+
+      // Skip HIGH tier by default (unless explicitly enabled)
+      if (opp.riskTier === 'high' && this.config.buckets.high.maxPositions === 0) continue;
 
       // Check bucket limits
       const bucket = this.config.buckets[opp.riskTier];
-      if (bucketCounts[opp.riskTier] >= bucket.maxPositions) {
-        continue;
-      }
+      if (bucketCounts[opp.riskTier] >= bucket.maxPositions) continue;
 
       // Check total position limit
-      const totalOpen = Object.values(bucketCounts).reduce((a, b) => a + b, 0);
-      if (totalOpen >= this.config.risk.maxConcurrentPositions) {
-        break;
-      }
-
-      // Check exposure limit
-      const newExposure = currentExposure + this.config.capital.positionSizeEur;
-      if (newExposure > maxExposure) {
-        continue;
-      }
+      const totalOpen = selected.length + positions.length;
+      if (totalOpen >= this.config.risk.maxConcurrentHedges) break;
 
       // Check stress test
       const stressLoss = this.calculateStressLoss(positions, opp);
@@ -212,6 +244,9 @@ export class RiskManager {
       selected.push(opp);
       bucketCounts[opp.riskTier]++;
       usedSymbols.add(opp.symbol);
+
+      // Only open 1 new position per cycle for safety
+      if (selected.length >= 1) break;
     }
 
     return selected;
@@ -249,17 +284,20 @@ export class RiskManager {
     // Calculate total unrealized PnL
     const unrealizedPnl = positions.reduce((sum, p) => sum + p.unrealized_pnl_eur, 0);
     
-    // Check if we should trigger kill switch
+    // Check for kill switch (€20 max loss)
     if (unrealizedPnl < -this.config.risk.maxDailyDrawdownEur) {
-      await this.triggerKillSwitch(`Unrealized loss €${Math.abs(unrealizedPnl).toFixed(2)} exceeds max €${this.config.risk.maxDailyDrawdownEur}`);
+      await this.triggerKillSwitch(
+        `Unrealized loss €${Math.abs(unrealizedPnl).toFixed(2)} exceeds max €${this.config.risk.maxDailyDrawdownEur}`
+      );
       return;
     }
 
-    // Update last scan timestamp
+    // Update state
     await this.supabase
       .from('autopilot_state')
       .update({
         last_scan_ts: new Date().toISOString(),
+        daily_drawdown_eur: unrealizedPnl < 0 ? unrealizedPnl : 0,
         updated_at: new Date().toISOString(),
       })
       .eq('id', state.id);
