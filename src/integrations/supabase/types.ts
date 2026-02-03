@@ -318,6 +318,211 @@ export type Database = {
           },
         ]
       }
+      autopilot_audit_log: {
+        Row: {
+          action: string
+          created_at: string
+          details: Json
+          entity_id: string | null
+          entity_type: string | null
+          id: string
+          level: string
+          ts: string
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          details?: Json
+          entity_id?: string | null
+          entity_type?: string | null
+          id?: string
+          level: string
+          ts?: string
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          details?: Json
+          entity_id?: string | null
+          entity_type?: string | null
+          id?: string
+          level?: string
+          ts?: string
+        }
+        Relationships: []
+      }
+      autopilot_positions: {
+        Row: {
+          created_at: string
+          current_long_price: number | null
+          current_short_price: number | null
+          entry_funding_spread_8h: number
+          entry_long_price: number
+          entry_score: number
+          entry_short_price: number
+          entry_ts: string
+          exit_long_price: number | null
+          exit_reason: string | null
+          exit_short_price: number | null
+          exit_ts: string | null
+          funding_collected_eur: number
+          id: string
+          intervals_collected: number
+          leverage: number
+          long_exchange: string
+          long_market_id: string | null
+          mode: string
+          realized_pnl_eur: number | null
+          realized_pnl_percent: number | null
+          risk_snapshot: Json
+          risk_tier: string
+          short_exchange: string
+          short_market_id: string | null
+          size_eur: number
+          status: string
+          symbol: string
+          symbol_id: string | null
+          unrealized_pnl_eur: number
+          unrealized_pnl_percent: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          current_long_price?: number | null
+          current_short_price?: number | null
+          entry_funding_spread_8h: number
+          entry_long_price: number
+          entry_score: number
+          entry_short_price: number
+          entry_ts?: string
+          exit_long_price?: number | null
+          exit_reason?: string | null
+          exit_short_price?: number | null
+          exit_ts?: string | null
+          funding_collected_eur?: number
+          id?: string
+          intervals_collected?: number
+          leverage?: number
+          long_exchange: string
+          long_market_id?: string | null
+          mode?: string
+          realized_pnl_eur?: number | null
+          realized_pnl_percent?: number | null
+          risk_snapshot?: Json
+          risk_tier: string
+          short_exchange: string
+          short_market_id?: string | null
+          size_eur: number
+          status?: string
+          symbol: string
+          symbol_id?: string | null
+          unrealized_pnl_eur?: number
+          unrealized_pnl_percent?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          current_long_price?: number | null
+          current_short_price?: number | null
+          entry_funding_spread_8h?: number
+          entry_long_price?: number
+          entry_score?: number
+          entry_short_price?: number
+          entry_ts?: string
+          exit_long_price?: number | null
+          exit_reason?: string | null
+          exit_short_price?: number | null
+          exit_ts?: string | null
+          funding_collected_eur?: number
+          id?: string
+          intervals_collected?: number
+          leverage?: number
+          long_exchange?: string
+          long_market_id?: string | null
+          mode?: string
+          realized_pnl_eur?: number | null
+          realized_pnl_percent?: number | null
+          risk_snapshot?: Json
+          risk_tier?: string
+          short_exchange?: string
+          short_market_id?: string | null
+          size_eur?: number
+          status?: string
+          symbol?: string
+          symbol_id?: string | null
+          unrealized_pnl_eur?: number
+          unrealized_pnl_percent?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "autopilot_positions_long_market_id_fkey"
+            columns: ["long_market_id"]
+            isOneToOne: false
+            referencedRelation: "markets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "autopilot_positions_short_market_id_fkey"
+            columns: ["short_market_id"]
+            isOneToOne: false
+            referencedRelation: "markets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "autopilot_positions_symbol_id_fkey"
+            columns: ["symbol_id"]
+            isOneToOne: false
+            referencedRelation: "symbols"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      autopilot_state: {
+        Row: {
+          config_snapshot: Json
+          daily_drawdown_eur: number
+          id: string
+          is_running: boolean
+          kill_switch_active: boolean
+          kill_switch_reason: string | null
+          last_scan_ts: string | null
+          last_trade_ts: string | null
+          mode: string
+          total_funding_collected_eur: number
+          total_realized_pnl_eur: number
+          updated_at: string
+        }
+        Insert: {
+          config_snapshot?: Json
+          daily_drawdown_eur?: number
+          id?: string
+          is_running?: boolean
+          kill_switch_active?: boolean
+          kill_switch_reason?: string | null
+          last_scan_ts?: string | null
+          last_trade_ts?: string | null
+          mode?: string
+          total_funding_collected_eur?: number
+          total_realized_pnl_eur?: number
+          updated_at?: string
+        }
+        Update: {
+          config_snapshot?: Json
+          daily_drawdown_eur?: number
+          id?: string
+          is_running?: boolean
+          kill_switch_active?: boolean
+          kill_switch_reason?: string | null
+          last_scan_ts?: string | null
+          last_trade_ts?: string | null
+          mode?: string
+          total_funding_collected_eur?: number
+          total_realized_pnl_eur?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       backtest_runs: {
         Row: {
           completed_at: string | null

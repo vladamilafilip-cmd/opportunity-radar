@@ -21,6 +21,9 @@ import { FundingIntervalBadge } from "@/components/FundingIntervalBadge";
 import { FundingCountdown } from "@/components/FundingCountdown";
 import { APRDisplay } from "@/components/APRDisplay";
 import { FloatingPnL } from "@/components/FloatingPnL";
+import { AutopilotPanel, AutopilotPositions, AutopilotStatus, ExplainDrawer } from "@/components/autopilot";
+import { useAutopilotStore } from "@/store/autopilotStore";
+import type { AutopilotPosition } from "@/types/autopilot";
 import {
   generateFundingRates,
   generateFundingArbitrage,
@@ -71,6 +74,7 @@ type DataSource = "live" | "mock" | "mixed";
 export default function Dashboard() {
   const { user, logout } = useAuthStore();
   const { positions, stats, refreshPositions } = useTradingStore();
+  const { positions: autopilotPositions, fetchPositions: fetchAutopilotPositions } = useAutopilotStore();
   const navigate = useNavigate();
   const [lastUpdate, setLastUpdate] = useState(new Date());
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -79,6 +83,7 @@ export default function Dashboard() {
   const [investmentAmount, setInvestmentAmount] = useState<number>(10000);
   const [selectedPeriod, setSelectedPeriod] = useState<string>("8h");
   const [leverage, setLeverage] = useState<number>(1);
+  const [explainPosition, setExplainPosition] = useState<AutopilotPosition | null>(null);
 
   // Period multiplier for profit projection
   const getPeriodMultiplier = (period: string): number => {
@@ -416,6 +421,26 @@ export default function Dashboard() {
             </p>
           </CardContent>
         </Card>
+
+        {/* Autopilot Control Panel */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+          <div className="lg:col-span-1">
+            <AutopilotPanel />
+          </div>
+          <div className="lg:col-span-2">
+            <AutopilotPositions 
+              positions={autopilotPositions} 
+              onExplain={setExplainPosition}
+            />
+          </div>
+        </div>
+        
+        {/* Explain Drawer */}
+        <ExplainDrawer 
+          open={!!explainPosition} 
+          onOpenChange={(open) => !open && setExplainPosition(null)}
+          position={explainPosition}
+        />
 
         {/* Portfolio Summary - New Enhanced Component */}
         <PortfolioSummary />
