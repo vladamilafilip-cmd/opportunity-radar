@@ -1,73 +1,164 @@
-# Welcome to your Lovable project
+# Diadonum - Crypto Funding Arbitrage Platform
 
-## Project info
+A comprehensive crypto funding rate arbitrage discovery and paper trading platform built with React, TypeScript, and Supabase.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+## Features
 
-## How can I edit this code?
+- **Funding Rate Scanner**: Real-time funding rate monitoring across major exchanges
+- **Arbitrage Detection**: Automatic identification of cross-exchange funding arbitrage opportunities
+- **Paper Trading**: Risk-free position simulation with realistic PnL tracking
+- **Autopilot System**: Local-first automated paper trading with configurable risk management
+- **Risk Management**: Bucket allocation, kill switch, and exposure limits
 
-There are several ways of editing your application.
+## Quick Start
 
-**Use Lovable**
+### Frontend
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+```bash
+# Install dependencies
+npm install
 
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
+# Start development server
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+### Autopilot Worker (Local Node.js)
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+```bash
+cd worker
+npm install
+npm run dev
+```
 
-**Use GitHub Codespaces**
+## Architecture
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+```
+┌────────────────────────────────────────────────────────────────────┐
+│                        DIADONUM                                    │
+├────────────────────────────────────────────────────────────────────┤
+│                                                                    │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐         │
+│  │  React UI    │────│   Zustand    │────│   Supabase   │         │
+│  │  Dashboard   │    │   Stores     │    │   Cloud/DB   │         │
+│  └──────────────┘    └──────────────┘    └──────────────┘         │
+│                                                 │                  │
+│  ┌──────────────────────────────────────────────┴───────────────┐ │
+│  │                    LOCAL WORKER (Node.js)                     │ │
+│  │  Opportunity Engine → Position Manager → Risk Manager         │ │
+│  └───────────────────────────────────────────────────────────────┘ │
+│                                                                    │
+└────────────────────────────────────────────────────────────────────┘
+```
 
-## What technologies are used for this project?
+## Configuration
 
-This project is built with:
+All autopilot settings are in `config/autopilot.ts`:
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `capital.totalEur` | 200 | Total capital in EUR |
+| `capital.maxRiskPercent` | 10 | Max risk (10% = €20) |
+| `capital.positionSizeEur` | 10 | Fixed position size |
+| `worker.scanIntervalSeconds` | 60 | Scan frequency |
 
-## How can I deploy this project?
+### Bucket Allocation
 
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
+| Tier | Allocation | Max Positions |
+|------|------------|---------------|
+| SAFE | 70% | 14 |
+| MEDIUM | 20% | 4 |
+| HIGH | 10% | 2 |
 
-## Can I connect a custom domain to my Lovable project?
+### Profit Thresholds
 
-Yes, you can!
+| Risk Tier | Min Profit | Max Spread |
+|-----------|------------|------------|
+| SAFE | 15 bps | 10 bps |
+| MEDIUM | 25 bps | 20 bps |
+| HIGH | 50 bps | 50 bps |
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+## Autopilot System
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+The autopilot runs locally and manages paper trading positions automatically:
+
+1. **Scans** for opportunities every 60 seconds
+2. **Ranks** opportunities by score (profit × liquidity × stability)
+3. **Opens** positions within risk budget and bucket limits
+4. **Monitors** PnL and simulates funding collection
+5. **Closes** positions based on exit rules (time, drift, profit threshold)
+
+### Exit Rules
+
+- Min holding: 1 funding interval (8h)
+- Max holding: 24 hours
+- PnL drift > 2% (delta-neutral breakdown)
+- Profit falls below 0.05%
+
+### Kill Switch
+
+Automatically triggers when:
+- Daily drawdown exceeds €20
+- Stress test shows potential losses beyond limit
+
+Requires manual reset via UI.
+
+## Tech Stack
+
+- **Frontend**: React 18, TypeScript, Vite, TailwindCSS
+- **State**: Zustand, TanStack Query
+- **UI**: shadcn/ui, Lucide icons
+- **Backend**: Supabase (PostgreSQL, Auth, Edge Functions)
+- **Worker**: Node.js, tsx
+
+## Project Structure
+
+```
+├── config/
+│   └── autopilot.ts          # Autopilot configuration
+├── src/
+│   ├── components/
+│   │   ├── autopilot/        # Autopilot UI components
+│   │   └── ui/               # shadcn/ui components
+│   ├── pages/                # Route pages
+│   ├── store/                # Zustand stores
+│   └── types/                # TypeScript types
+├── worker/
+│   └── src/
+│       ├── engine/           # Core logic
+│       └── utils/            # Utilities
+└── supabase/
+    └── functions/            # Edge functions
+```
+
+## File Overview
+
+### Key Files Created
+
+| File | Purpose |
+|------|---------|
+| `config/autopilot.ts` | Single source of truth for all autopilot settings |
+| `worker/src/index.ts` | Worker entry point with scheduler loop |
+| `worker/src/engine/formulas.ts` | All profit/risk calculation formulas |
+| `worker/src/engine/opportunityEngine.ts` | Market scanning and ranking |
+| `worker/src/engine/positionManager.ts` | Position lifecycle management |
+| `worker/src/engine/riskManager.ts` | Risk controls and kill switch |
+| `src/store/autopilotStore.ts` | Zustand store for autopilot state |
+| `src/components/autopilot/AutopilotPanel.tsx` | Main control panel UI |
+| `src/components/autopilot/ExplainDrawer.tsx` | Trade explanation modal |
+
+## Security
+
+- All sensitive operations use service role key (worker only)
+- RLS policies protect user data
+- Paper trading mode prevents real trades
+- Kill switch prevents runaway losses
+
+## Disclaimer
+
+This is a paper trading simulation tool for educational purposes.
+It does not execute real trades or manage real funds.
+Always do your own research before trading cryptocurrencies.
+
+## License
+
+MIT
