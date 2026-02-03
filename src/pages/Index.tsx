@@ -14,7 +14,11 @@ import {
   Shield,
   Zap,
   HardDrive,
-  AlertTriangle
+  AlertTriangle,
+  Bot,
+  Clock,
+  TrendingUp,
+  FileText
 } from "lucide-react";
 
 type CheckStatus = "loading" | "ok" | "error" | "warning";
@@ -34,6 +38,9 @@ export default function HealthCheck() {
     { name: "Auth Service", icon: <Shield className="h-4 w-4" />, status: "loading" },
     { name: "Edge Functions", icon: <Zap className="h-4 w-4" />, status: "loading" },
     { name: "Storage", icon: <HardDrive className="h-4 w-4" />, status: "loading" },
+    { name: "Autopilot Worker", icon: <Bot className="h-4 w-4" />, status: "loading" },
+    { name: "Open Positions", icon: <TrendingUp className="h-4 w-4" />, status: "loading" },
+    { name: "Audit Log", icon: <FileText className="h-4 w-4" />, status: "loading" },
   ]);
 
   const updateCheck = (name: string, update: Partial<HealthCheck>) => {
@@ -168,6 +175,116 @@ export default function HealthCheck() {
       updateCheck("Storage", {
         status: "error",
         message: "Storage unreachable",
+        detail: e.message,
+      });
+    }
+
+    // 6. Autopilot Worker Check
+    try {
+      const { data: state } = await supabase
+        .from("autopilot_state")
+        .select("last_scan_ts, is_running, kill_switch_active, mode")
+        .limit(1)
+        .maybeSingle();
+
+      if (state?.last_scan_ts) {
+        const lastScan = new Date(state.last_scan_ts);
+        const minutesAgo = (Date.now() - lastScan.getTime()) / 60000;
+        
+        if (state.kill_switch_active) {
+          updateCheck("Autopilot Worker", {
+            status: "error",
+            message: "Kill switch active",
+            detail: "Manual intervention required",
+          });
+        } else if (minutesAgo < 5) {
+          updateCheck("Autopilot Worker", {
+            status: "ok",
+            message: state.is_running ? "Running" : `Idle (${state.mode} mode)`,
+          });
+        } else {
+          updateCheck("Autopilot Worker", {
+            status: "warning",
+            message: `Last seen ${Math.round(minutesAgo)}m ago`,
+          });
+        }
+      } else {
+        updateCheck("Autopilot Worker", {
+          status: "warning",
+          message: "No data yet",
+          detail: "Worker may not be running",
+        });
+      }
+    } catch (e: any) {
+      updateCheck("Autopilot Worker", {
+        status: "warning",
+        message: "Could not check",
+        detail: e.message,
+      });
+    }
+
+    // 7. Open Positions Check
+    try {
+      const { data: positions, error } = await supabase
+        .from("autopilot_positions")
+        .select("id, status, unrealized_pnl_eur")
+        .eq("status", "open");
+
+      if (error) {
+        updateCheck("Open Positions", {
+          status: "warning",
+          message: "Could not fetch",
+          detail: error.message,
+        });
+      } else {
+        const count = positions?.length || 0;
+        const totalPnl = positions?.reduce((sum, p) => sum + (p.unrealized_pnl_eur || 0), 0) || 0;
+        updateCheck("Open Positions", {
+          status: "ok",
+          message: `${count} open positions`,
+          detail: totalPnl !== 0 ? `PnL: €${totalPnl.toFixed(2)}` : undefined,
+        });
+      }
+    } catch (e: any) {
+      updateCheck("Open Positions", {
+        status: "warning",
+        message: "Check failed",
+        detail: e.message,
+      });
+    }
+
+    // 8. Audit Log Check
+    try {
+      const { data: logs, error } = await supabase
+        .from("autopilot_audit_log")
+        .select("id, ts, level")
+        .order("ts", { ascending: false })
+        .limit(10);
+
+      if (error) {
+        updateCheck("Audit Log", {
+          status: "warning",
+          message: "Could not fetch",
+          detail: error.message,
+        });
+      } else {
+        const errorCount = logs?.filter(l => l.level === 'error').length || 0;
+        if (errorCount > 0) {
+          updateCheck("Audit Log", {
+            status: "warning",
+            message: `${errorCount} recent errors`,
+          });
+        } else {
+          updateCheck("Audit Log", {
+            status: "ok",
+            message: `${logs?.length || 0} recent entries`,
+          });
+        }
+      }
+    } catch (e: any) {
+      updateCheck("Audit Log", {
+        status: "warning",
+        message: "Check failed",
         detail: e.message,
       });
     }
