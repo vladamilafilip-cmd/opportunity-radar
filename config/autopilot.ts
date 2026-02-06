@@ -95,21 +95,15 @@ export const autopilotConfig: AutopilotConfig = {
     high: { percent: 5, maxPositions: 0 },  // Display only, no auto-trade
   },
   
-  // Expanded exchanges for more opportunities
+  // ONLY Binance + OKX (where you have funds)
   exchanges: [
-    { code: 'binance', name: 'Binance', allocation: 100, purpose: 'both', fundingInterval: 8 },
-    { code: 'okx', name: 'OKX', allocation: 100, purpose: 'both', fundingInterval: 8 },
-    { code: 'bitget', name: 'Bitget', allocation: 80, purpose: 'both', fundingInterval: 8 },
-    { code: 'bybit', name: 'Bybit', allocation: 80, purpose: 'both', fundingInterval: 8 },
-    { code: 'kraken', name: 'Kraken', allocation: 60, purpose: 'both', fundingInterval: 8 },
+    { code: 'binance', name: 'Binance', allocation: 230, purpose: 'both', fundingInterval: 8 },
+    { code: 'okx', name: 'OKX', allocation: 230, purpose: 'both', fundingInterval: 8 },
   ],
   
   fundingIntervals: {
     binance: 8,
     okx: 8,
-    bitget: 8,
-    bybit: 8,
-    kraken: 8,
   },
   
   // Strict thresholds for safety
