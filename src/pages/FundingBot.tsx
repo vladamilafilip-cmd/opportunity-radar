@@ -44,6 +44,7 @@ export default function FundingBot() {
     setMode,
     closePosition,
     resetKillSwitch,
+    openPosition,
     subscribeToState,
     subscribeToPositions,
   } = useAutopilotStore();
@@ -111,12 +112,25 @@ export default function FundingBot() {
   };
 
   const handleEnterPosition = async (opp: Opportunity) => {
-    if (mode === 'paper') {
-      toast.success(`[TEST] Would enter ${opp.symbol} hedge`, {
+    if (mode === 'off') {
+      toast.error('Bot is OFF. Switch to TEST or LIVE mode first.');
+      return;
+    }
+    
+    const result = await openPosition(
+      opp.symbol,
+      opp.longExchange,
+      opp.shortExchange,
+      opp.spreadBps,
+      opp.score
+    );
+    
+    if (result.ok) {
+      toast.success(`${mode === 'paper' ? '[TEST] ' : ''}Opened ${opp.symbol} hedge`, {
         description: `L:${opp.longExchange} / S:${opp.shortExchange} @ ${(opp.spreadBps/100).toFixed(3)}%`
       });
     } else {
-      toast.info('Live trading coming soon');
+      toast.error(`Failed to open position: ${result.error}`);
     }
   };
 

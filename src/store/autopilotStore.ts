@@ -336,6 +336,33 @@ export const useAutopilotStore = create<AutopilotStore>((set, get) => ({
     }
   },
 
+  openPosition: async (symbol: string, longExchange: string, shortExchange: string, spreadBps: number, score: number) => {
+    try {
+      const { data, error } = await supabase.functions.invoke('autopilot-control', {
+        body: { 
+          action: 'open_position', 
+          symbol, 
+          long_exchange: longExchange, 
+          short_exchange: shortExchange, 
+          spread_bps: spreadBps, 
+          score 
+        },
+      });
+      
+      if (error) throw error;
+      if (data?.error) {
+        set({ error: data.error });
+        return { ok: false, error: data.error };
+      }
+
+      await get().fetchPositions();
+      return { ok: true };
+    } catch (error) {
+      set({ error: String(error) });
+      return { ok: false, error: String(error) };
+    }
+  },
+
   resetKillSwitch: async () => {
     try {
       const { error } = await supabase.functions.invoke('autopilot-control', {
