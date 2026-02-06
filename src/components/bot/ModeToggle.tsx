@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Zap, TestTube } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { AutopilotMode } from '../../../config/autopilot';
+import type { AutopilotMode } from '@/types/autopilot';
 
 interface ModeToggleProps {
   mode: AutopilotMode;
@@ -15,13 +15,13 @@ export function ModeToggle({ mode, onModeChange, disabled }: ModeToggleProps) {
   return (
     <div className="flex items-center gap-2">
       <Button
-        variant={mode === 'test' ? 'default' : 'ghost'}
+        variant={mode === 'paper' ? 'default' : 'ghost'}
         size="sm"
-        onClick={() => onModeChange('test')}
+        onClick={() => onModeChange('paper')}
         disabled={disabled}
         className={cn(
           "gap-1.5 font-mono",
-          mode === 'test' && "bg-warning text-warning-foreground hover:bg-warning/90"
+          mode === 'paper' && "bg-warning text-warning-foreground hover:bg-warning/90"
         )}
       >
         <TestTube className="h-3.5 w-3.5" />
@@ -46,11 +46,11 @@ export function ModeToggle({ mode, onModeChange, disabled }: ModeToggleProps) {
           variant="outline" 
           className={cn(
             "ml-2 font-mono text-xs",
-            mode === 'test' && "border-warning/50 text-warning",
+            mode === 'paper' && "border-warning/50 text-warning",
             mode === 'live' && "border-success/50 text-success"
           )}
         >
-          {mode === 'test' ? 'NO REAL TRADES' : 'REAL MONEY'}
+          {mode === 'paper' ? 'NO REAL TRADES' : 'REAL MONEY'}
         </Badge>
       )}
     </div>

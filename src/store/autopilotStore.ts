@@ -247,26 +247,13 @@ export const useAutopilotStore = create<AutopilotStore>((set, get) => ({
 
   setMode: async (mode: AutopilotMode) => {
     try {
-      const { data: stateData } = await supabase
-        .from('autopilot_state')
-        .select('id')
-        .limit(1)
-        .maybeSingle();
-      
-      if (!stateData) {
-        const { error } = await supabase
-          .from('autopilot_state')
-          .insert({ mode, is_running: false });
-        if (error) throw error;
-      } else {
-        const { error } = await supabase
-          .from('autopilot_state')
-          .update({ mode, updated_at: new Date().toISOString() })
-          .eq('id', stateData.id);
-        if (error) throw error;
-      }
-      
+      const { error } = await supabase.functions.invoke('autopilot-control', {
+        body: { action: 'set_mode', mode },
+      });
+      if (error) throw error;
+
       set({ mode });
+      await get().fetchState();
     } catch (error) {
       set({ error: String(error) });
     }
@@ -279,7 +266,7 @@ export const useAutopilotStore = create<AutopilotStore>((set, get) => ({
         .select('id')
         .limit(1)
         .maybeSingle();
-      
+
       if (stateData) {
         const { error } = await supabase
           .from('autopilot_state')
@@ -287,7 +274,7 @@ export const useAutopilotStore = create<AutopilotStore>((set, get) => ({
           .eq('id', stateData.id);
         if (error) throw error;
       }
-      
+
       set({ dryRunEnabled: enabled });
     } catch (error) {
       set({ error: String(error) });
@@ -296,21 +283,13 @@ export const useAutopilotStore = create<AutopilotStore>((set, get) => ({
 
   start: async () => {
     try {
-      const { data: stateData } = await supabase
-        .from('autopilot_state')
-        .select('id')
-        .limit(1)
-        .maybeSingle();
-      
-      if (stateData) {
-        const { error } = await supabase
-          .from('autopilot_state')
-          .update({ is_running: true, updated_at: new Date().toISOString() })
-          .eq('id', stateData.id);
-        if (error) throw error;
-      }
-      
+      const { error } = await supabase.functions.invoke('autopilot-control', {
+        body: { action: 'set_running', is_running: true },
+      });
+      if (error) throw error;
+
       set({ isRunning: true });
+      await get().fetchState();
     } catch (error) {
       set({ error: String(error) });
     }
@@ -318,21 +297,13 @@ export const useAutopilotStore = create<AutopilotStore>((set, get) => ({
 
   stop: async () => {
     try {
-      const { data: stateData } = await supabase
-        .from('autopilot_state')
-        .select('id')
-        .limit(1)
-        .maybeSingle();
-      
-      if (stateData) {
-        const { error } = await supabase
-          .from('autopilot_state')
-          .update({ is_running: false, updated_at: new Date().toISOString() })
-          .eq('id', stateData.id);
-        if (error) throw error;
-      }
-      
+      const { error } = await supabase.functions.invoke('autopilot-control', {
+        body: { action: 'set_running', is_running: false },
+      });
+      if (error) throw error;
+
       set({ isRunning: false });
+      await get().fetchState();
     } catch (error) {
       set({ error: String(error) });
     }
@@ -340,21 +311,13 @@ export const useAutopilotStore = create<AutopilotStore>((set, get) => ({
 
   stopAll: async () => {
     try {
-      await get().stop();
-      
-      const { error } = await supabase
-        .from('autopilot_positions')
-        .update({
-          status: 'stopped',
-          exit_ts: new Date().toISOString(),
-          exit_reason: 'Manual STOP ALL',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('status', 'open');
-      
+      const { error } = await supabase.functions.invoke('autopilot-control', {
+        body: { action: 'stop_all' },
+      });
       if (error) throw error;
-      
-      await get().fetchPositions();
+
+      set({ isRunning: false });
+      await Promise.all([get().fetchState(), get().fetchPositions()]);
     } catch (error) {
       set({ error: String(error) });
     }
@@ -362,18 +325,11 @@ export const useAutopilotStore = create<AutopilotStore>((set, get) => ({
 
   closePosition: async (positionId: string, reason: string) => {
     try {
-      const { error } = await supabase
-        .from('autopilot_positions')
-        .update({
-          status: 'closed',
-          exit_ts: new Date().toISOString(),
-          exit_reason: reason,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', positionId);
-      
+      const { error } = await supabase.functions.invoke('autopilot-control', {
+        body: { action: 'close_position', position_id: positionId, reason },
+      });
       if (error) throw error;
-      
+
       await get().fetchPositions();
     } catch (error) {
       set({ error: String(error) });
@@ -382,31 +338,19 @@ export const useAutopilotStore = create<AutopilotStore>((set, get) => ({
 
   resetKillSwitch: async () => {
     try {
-      const { data: stateData } = await supabase
-        .from('autopilot_state')
-        .select('id')
-        .limit(1)
-        .maybeSingle();
-      
-      if (stateData) {
-        const { error } = await supabase
-          .from('autopilot_state')
-          .update({
-            kill_switch_active: false,
-            kill_switch_reason: null,
-            daily_drawdown_eur: 0,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', stateData.id);
-        if (error) throw error;
-      }
-      
-      set({ 
-        killSwitchActive: false, 
-        killSwitchReason: null, 
+      const { error } = await supabase.functions.invoke('autopilot-control', {
+        body: { action: 'reset_kill_switch' },
+      });
+      if (error) throw error;
+
+      set({
+        killSwitchActive: false,
+        killSwitchReason: null,
         dailyDrawdown: 0,
         riskLevel: 'normal',
       });
+
+      await get().fetchState();
     } catch (error) {
       set({ error: String(error) });
     }

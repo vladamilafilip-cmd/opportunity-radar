@@ -29,7 +29,7 @@ const modeConfig: Record<AutopilotMode, { label: string; color: string; descript
     color: 'bg-muted text-muted-foreground', 
     description: 'Autopilot disabled' 
   },
-  test: { 
+  paper: { 
     label: 'TEST', 
     color: 'bg-warning/20 text-warning border-warning/30', 
     description: 'Test mode - no real orders' 
@@ -114,7 +114,7 @@ export function AutopilotPanel() {
       <CardContent className="space-y-4">
         {/* Mode Selector */}
         <div className="flex gap-2">
-          {(['off', 'test', 'live'] as AutopilotMode[]).map((m) => {
+          {(['off', 'paper', 'live'] as AutopilotMode[]).map((m) => {
             const config = modeConfig[m];
             const isActive = mode === m;
             
@@ -125,7 +125,7 @@ export function AutopilotPanel() {
                 size="sm"
                 className={cn(
                   "flex-1 gap-1",
-                  isActive && m === 'test' && "bg-warning text-warning-foreground hover:bg-warning/90",
+                  isActive && m === 'paper' && "bg-warning text-warning-foreground hover:bg-warning/90",
                   isActive && m === 'live' && "bg-success text-success-foreground hover:bg-success/90"
                 )}
                 disabled={isChangingMode || isLoading}

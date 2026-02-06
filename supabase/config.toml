@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.ingest-exchange-data]
 verify_jwt = false
+
+[functions.autopilot-control]
+verify_jwt = false

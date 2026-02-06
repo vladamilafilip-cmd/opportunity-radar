@@ -74,12 +74,12 @@ export function AutopilotStatus({ compact = false, onClick }: AutopilotStatusPro
             variant="outline" 
             className={cn(
               "text-xs",
-              mode === 'test' && "bg-warning/20 text-warning border-warning/30",
+              mode === 'paper' && "bg-warning/20 text-warning border-warning/30",
               mode === 'live' && "bg-success/20 text-success border-success/30"
             )}
           >
             {mode === 'live' && <Zap className="h-2 w-2 mr-1" />}
-            {mode.toUpperCase()}
+            {mode === 'paper' ? 'TEST' : mode.toUpperCase()}
           </Badge>
         </div>
       )}

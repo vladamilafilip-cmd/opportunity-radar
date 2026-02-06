@@ -2,7 +2,7 @@
 // Minimalist funding arbitrage configuration
 
 export type RiskTier = 'safe' | 'medium' | 'high';
-export type AutopilotMode = 'off' | 'live' | 'test';
+export type AutopilotMode = 'off' | 'paper' | 'live';
 export type RiskLevel = 'normal' | 'cautious' | 'stopped';
 
 export interface ExchangeAllocation {
@@ -155,7 +155,7 @@ export const autopilotConfig: AutopilotConfig = {
     priceUpdateSeconds: 30,
   },
   
-  mode: 'test',                   // Default to TEST mode
+  mode: 'paper',                   // Default to PAPER mode
   
   symbols: {
     whitelist: ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE', 'BNB', 'LINK', 'LTC', 'ADA', 'AVAX', 'MATIC', 'DOT', 'ATOM', 'UNI', 'ARB'],
