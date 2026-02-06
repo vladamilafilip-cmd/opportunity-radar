@@ -1,37 +1,86 @@
 
-# Implementacija Funding Arbitrage Bota
+# Plan: Proširenje filtera za prikaz prilika
 
-## Šta radim
+## Dijagnostika problema
 
-### 1. Dodajem 10 API Secrets
-- BINANCE_API_KEY, BINANCE_API_SECRET
-- BINANCE_TESTNET_API_KEY, BINANCE_TESTNET_API_SECRET
-- OKX_API_KEY, OKX_API_SECRET, OKX_API_PASSPHRASE
-- OKX_TESTNET_API_KEY, OKX_TESTNET_API_SECRET, OKX_TESTNET_API_PASSPHRASE
+Analizom baze podataka i koda otkriveno je **tri kritična problema**:
 
-### 2. Kreiram Edge Funkciju `autopilot-executor`
-- Koristi CCXT za Binance i OKX
-- Automatski bira mainnet/testnet po modu
-- Skenira funding spreads
-- Otvara/zatvara hedge pozicije
-- BEZ logovanja (po zahtevu)
+1. **Filter berzi je previše restriktivan**
+   - Konfiguracija dozvoljava samo: `binance` + `okx`
+   - U bazi postoje prilike sa: `bitget`, `bybit`, `kraken`, `htx`, `mexc`
+   - Nema nijednog para koji je ISTOVREMENO Binance + OKX
 
-### 3. Ažuriram UI
-- Popravka TEST/LIVE toggle-a
-- Dodajem ENTER dugme za manual trade
-- Dodajem CLOSE dugme za zatvaranje
+2. **Whitelist simbola ne pokriva dostupne prilike**
+   - Trenutni whitelist: BTC, ETH, SOL, XRP, DOGE, BNB, LINK...
+   - Najbolje prilike u bazi: FLOW/USDT, ZIL/USDT (nisu na listi!)
 
-## Fajlovi
+3. **Bucket alokacija blokira sve prilike**
+   - Konfiguracija: `safe: 100%, medium: 0%, high: 0%`
+   - Sve prilike u bazi su označene kao `high` risk
 
-| Fajl | Akcija |
+## Predloženo rešenje
+
+### 1. Proširiti listu dozvoljenih berzi
+
+Dodati Bitget, Bybit i Kraken u konfiguraciju jer imaju značajan broj prilika:
+
+```
+exchanges: [
+  { code: 'binance', name: 'Binance', allocation: 100, purpose: 'both', fundingInterval: 8 },
+  { code: 'okx', name: 'OKX', allocation: 100, purpose: 'both', fundingInterval: 8 },
+  { code: 'bitget', name: 'Bitget', allocation: 80, purpose: 'both', fundingInterval: 8 },
+  { code: 'bybit', name: 'Bybit', allocation: 80, purpose: 'both', fundingInterval: 8 },
+  { code: 'kraken', name: 'Kraken', allocation: 60, purpose: 'both', fundingInterval: 8 },
+]
+```
+
+### 2. Proširiti whitelist simbola
+
+Dodati tokene koji imaju aktivne prilike:
+
+```
+whitelist: [
+  'BTC', 'ETH', 'SOL', 'XRP', 'DOGE', 'BNB', 'LINK', 'LTC', 'ADA', 'AVAX',
+  'MATIC', 'DOT', 'ATOM', 'UNI', 'ARB',
+  'FLOW', 'ZIL', 'APE', 'NEAR', 'FTM', 'OP', 'INJ', 'SUI', 'TIA', 'SEI'
+]
+```
+
+### 3. Omogućiti MEDIUM i HIGH tier (sa upozorenjima)
+
+Za prikaz prilika (ali ne automatsko trgovanje):
+
+```
+buckets: {
+  safe: { percent: 70, maxPositions: 6 },
+  medium: { percent: 25, maxPositions: 2 },
+  high: { percent: 5, maxPositions: 0 },  // Prikaz ali bez auto-trade
+}
+```
+
+### 4. Ukloniti filter berzi u useOpportunities.ts
+
+Za **prikaz** prilika ukloniti strogi filter, ali zadržati upozorenja:
+
+```typescript
+// Umesto filtriranja po exchange-u, prikazati sve sa risk oznakama
+const mapped: Opportunity[] = data.map(opp => ({
+  ...
+  riskTier: calculateRiskTier(...), // Dinamički računati
+  exchangeWarning: !isAllowedExchange(longEx, shortEx), // Označiti ako nije preferred
+}));
+```
+
+## Tehnički detalji
+
+| Fajl | Izmena |
 |------|--------|
-| `supabase/functions/autopilot-executor/index.ts` | CREATE |
-| `src/pages/FundingBot.tsx` | UPDATE |
-| `src/store/autopilotStore.ts` | UPDATE |
+| `config/autopilot.ts` | Dodati berze, simbole, prilagoditi buckete |
+| `src/hooks/useOpportunities.ts` | Ukloniti strogi filter berzi za prikaz |
+| `src/components/bot/OpportunitiesTable.tsx` | Dodati oznaku za "non-preferred" berze |
 
-## Tehničke napomene
+## Bezbednost
 
-- CCXT preko `npm:ccxt` specifier-a
-- Sandbox mode = testnet
-- Max 8 pozicija, €50 po hedge-u
-- Kill switch na €50 drawdown
+- Automatsko trgovanje ostaje restriktivno (samo SAFE tier)
+- HIGH risk parovi se prikazuju ali dugme ENTER je onemogućeno
+- Manual trade zahteva potvrdu za non-preferred berze
