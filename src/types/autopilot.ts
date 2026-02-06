@@ -226,6 +226,7 @@ export interface AutopilotStoreActions {
   stopAll: () => Promise<void>;
   closePosition: (positionId: string, reason: string) => Promise<void>;
   resetKillSwitch: () => Promise<void>;
+  openPosition: (symbol: string, longExchange: string, shortExchange: string, spreadBps: number, score: number) => Promise<{ ok: boolean; error?: string }>;
   
   // Subscriptions
   subscribeToState: () => () => void;
