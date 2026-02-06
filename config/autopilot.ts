@@ -88,22 +88,28 @@ export const autopilotConfig: AutopilotConfig = {
     maxDeployedEur: 400,          // 8 hedges × €50
   },
   
-  // Only SAFE tier for $500 capital
+  // Bucket allocation with display for all tiers
   buckets: {
-    safe: { percent: 100, maxPositions: 8 },
-    medium: { percent: 0, maxPositions: 0 },
-    high: { percent: 0, maxPositions: 0 },
+    safe: { percent: 70, maxPositions: 6 },
+    medium: { percent: 25, maxPositions: 2 },
+    high: { percent: 5, maxPositions: 0 },  // Display only, no auto-trade
   },
   
-  // ONLY Binance + OKX
+  // Expanded exchanges for more opportunities
   exchanges: [
-    { code: 'binance', name: 'Binance', allocation: 230, purpose: 'long', fundingInterval: 8 },
-    { code: 'okx', name: 'OKX', allocation: 230, purpose: 'short', fundingInterval: 8 },
+    { code: 'binance', name: 'Binance', allocation: 100, purpose: 'both', fundingInterval: 8 },
+    { code: 'okx', name: 'OKX', allocation: 100, purpose: 'both', fundingInterval: 8 },
+    { code: 'bitget', name: 'Bitget', allocation: 80, purpose: 'both', fundingInterval: 8 },
+    { code: 'bybit', name: 'Bybit', allocation: 80, purpose: 'both', fundingInterval: 8 },
+    { code: 'kraken', name: 'Kraken', allocation: 60, purpose: 'both', fundingInterval: 8 },
   ],
   
   fundingIntervals: {
     binance: 8,
     okx: 8,
+    bitget: 8,
+    bybit: 8,
+    kraken: 8,
   },
   
   // Strict thresholds for safety
@@ -158,7 +164,12 @@ export const autopilotConfig: AutopilotConfig = {
   mode: 'paper',                   // Default to PAPER mode
   
   symbols: {
-    whitelist: ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE', 'BNB', 'LINK', 'LTC', 'ADA', 'AVAX', 'MATIC', 'DOT', 'ATOM', 'UNI', 'ARB'],
+    whitelist: [
+      'BTC', 'ETH', 'SOL', 'XRP', 'DOGE', 'BNB', 'LINK', 'LTC', 'ADA', 'AVAX',
+      'MATIC', 'DOT', 'ATOM', 'UNI', 'ARB',
+      'FLOW', 'ZIL', 'APE', 'NEAR', 'FTM', 'OP', 'INJ', 'SUI', 'TIA', 'SEI',
+      'AAVE', 'CRV', 'SNX', 'MKR', 'COMP', 'PEPE', 'WIF', 'BONK', 'FLOKI'
+    ],
     blacklist: [],
   },
 };
