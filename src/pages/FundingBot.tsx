@@ -147,7 +147,6 @@ export default function FundingBot() {
               <ModeToggle 
                 mode={mode} 
                 onModeChange={handleModeChange}
-                disabled={isRunning}
               />
               
               <div className="flex items-center gap-2">
