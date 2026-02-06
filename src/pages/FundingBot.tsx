@@ -16,6 +16,7 @@ import { CapitalWidget } from '@/components/bot/CapitalWidget';
 import { PositionsCard } from '@/components/bot/PositionsCard';
 import { OpportunitiesTable, type Opportunity } from '@/components/bot/OpportunitiesTable';
 import { ActivityLog } from '@/components/bot/ActivityLog';
+import { useOpportunities } from '@/hooks/useOpportunities';
 import { autopilotConfig } from '../../config/autopilot';
 import type { AutopilotMode } from '../../config/autopilot';
 import { cn } from '@/lib/utils';
@@ -50,7 +51,9 @@ export default function FundingBot() {
   } = useAutopilotStore();
 
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
+  
+  // Real opportunities from database
+  const { opportunities, isLoading: oppsLoading, refresh: refreshOpps } = useOpportunities();
 
   // Initialize
   useEffect(() => {
@@ -67,24 +70,13 @@ export default function FundingBot() {
     };
   }, [fetchState, fetchPositions, fetchAuditLogs, subscribeToState, subscribeToPositions]);
 
-  // Mock opportunities (replace with real data query)
-  useEffect(() => {
-    // Simulated opportunities - will be replaced with real DB query
-    const mockOpps: Opportunity[] = [
-      { id: '1', symbol: 'BTC/USDT', longExchange: 'Binance', shortExchange: 'OKX', spreadBps: 35, apr: 160, score: 85, isNew: true },
-      { id: '2', symbol: 'ETH/USDT', longExchange: 'Binance', shortExchange: 'OKX', spreadBps: 28, apr: 128, score: 78 },
-      { id: '3', symbol: 'SOL/USDT', longExchange: 'Binance', shortExchange: 'OKX', spreadBps: 42, apr: 192, score: 90, isNew: true },
-      { id: '4', symbol: 'DOGE/USDT', longExchange: 'Binance', shortExchange: 'OKX', spreadBps: 25, apr: 114, score: 72 },
-    ];
-    setOpportunities(mockOpps);
-  }, []);
-
   const handleRefresh = async () => {
     setIsRefreshing(true);
     await Promise.all([
       fetchState(),
       fetchPositions(),
       fetchAuditLogs(20),
+      refreshOpps(),
     ]);
     setIsRefreshing(false);
     toast.success('Data refreshed');
