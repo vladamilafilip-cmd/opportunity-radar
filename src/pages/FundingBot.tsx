@@ -111,7 +111,7 @@ export default function FundingBot() {
   };
 
   const handleEnterPosition = async (opp: Opportunity) => {
-    if (mode === 'test') {
+    if (mode === 'paper') {
       toast.success(`[TEST] Would enter ${opp.symbol} hedge`, {
         description: `L:${opp.longExchange} / S:${opp.shortExchange} @ ${(opp.spreadBps/100).toFixed(3)}%`
       });
@@ -266,7 +266,7 @@ export default function FundingBot() {
             €{autopilotConfig.risk.maxDailyDrawdownEur} kill switch
           </p>
           <p className="mt-1">
-            {mode === 'test' ? '⚡ TEST MODE - No real trades' : '🔴 LIVE MODE - Real money at risk'}
+            {mode === 'paper' ? '⚡ TEST MODE - No real trades' : '🔴 LIVE MODE - Real money at risk'}
           </p>
         </div>
       </main>

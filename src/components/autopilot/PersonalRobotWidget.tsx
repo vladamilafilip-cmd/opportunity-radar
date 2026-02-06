@@ -71,7 +71,7 @@ export function PersonalRobotWidget() {
     fetchPositions();
   };
 
-  const handleModeChange = (newMode: 'off' | 'test' | 'live') => {
+  const handleModeChange = (newMode: 'off' | 'paper' | 'live') => {
     setMode(newMode);
   };
 
@@ -113,9 +113,9 @@ export function PersonalRobotWidget() {
           </Button>
           <Button
             size="sm"
-            variant={mode === 'test' ? 'secondary' : 'ghost'}
-            onClick={() => handleModeChange('test')}
-            className={cn("h-7 text-xs", mode === 'test' && "bg-warning/20 text-warning")}
+            variant={mode === 'paper' ? 'secondary' : 'ghost'}
+            onClick={() => handleModeChange('paper')}
+            className={cn("h-7 text-xs", mode === 'paper' && "bg-warning/20 text-warning")}
           >
             TEST
           </Button>
