@@ -1,17 +1,16 @@
-// config/autopilot.ts - Single Source of Truth for LIVE Delta-Neutral Hedge Autopilot
-// All settings in one place for easy modification
+// config/autopilot.ts - Optimized for $500 Capital, Binance + OKX Only
+// Minimalist funding arbitrage configuration
 
 export type RiskTier = 'safe' | 'medium' | 'high';
-export type AutopilotMode = 'off' | 'live' | 'dryrun';
+export type AutopilotMode = 'off' | 'live' | 'test';
 export type RiskLevel = 'normal' | 'cautious' | 'stopped';
 
-// Exchange allocation structure
 export interface ExchangeAllocation {
   code: string;
   name: string;
-  allocation: number;    // EUR allocated
+  allocation: number;
   purpose: 'long' | 'short' | 'both';
-  fundingInterval: number; // hours
+  fundingInterval: number;
 }
 
 export interface BucketConfig {
@@ -27,30 +26,21 @@ export interface ThresholdConfig {
 }
 
 export interface AutopilotConfig {
-  // Capital & Risk
   capital: {
+    totalUsd: number;
     totalEur: number;
     maxRiskPercent: number;
-    hedgeSizeEur: number;         // Total per hedge (both legs)
-    legSizeEur: number;           // Per leg (half of hedge)
-    bufferEur: number;            // Always reserved
-    maxDeployedEur: number;       // Max capital in positions
-    reinvestThresholdEur: number;
+    hedgeSizeEur: number;
+    legSizeEur: number;
+    bufferEur: number;
+    maxDeployedEur: number;
   };
   
-  // Bucket Allocation (for hedge positions)
   buckets: Record<RiskTier, BucketConfig>;
-  
-  // Exchange Whitelist with Allocations
   exchanges: ExchangeAllocation[];
-  
-  // Funding Intervals (hours)
   fundingIntervals: Record<string, number>;
-  
-  // Profit Thresholds per Risk Tier (STRICTER for LIVE)
   thresholds: Record<RiskTier, ThresholdConfig>;
   
-  // Fee & Cost Model
   costs: {
     takerFeeBps: number;
     slippageBps: number;
@@ -58,167 +48,118 @@ export interface AutopilotConfig {
     maxTotalCostBps: number;
   };
   
-  // Exit Rules (STRICTER)
   exit: {
     holdingPeriodIntervals: number;
     maxHoldingHours: number;
     profitExitThresholdBps: number;
     pnlDriftLimitPercent: number;
-    spreadCollapseThresholdBps: number;
-    spreadSpikeThresholdBps: number;
-    dataStaleTimeoutSeconds: number;
-    profitTargetPercent: number;
   };
   
-  // Risk Manager (STRICTER)
   risk: {
     maxDailyDrawdownEur: number;
-    cautionDrawdownEur: number;      // Stop opening new positions
+    cautionDrawdownEur: number;
     maxConcurrentHedges: number;
-    stressTestMultiplier: number;
     killSwitchCooldownHours: number;
-    notionalMatchTolerancePercent: number;
-    maxLeverage: number;
-    defaultLeverage: number;
+    stressTestMultiplier: number;
   };
   
-  // Worker Settings
   worker: {
     scanIntervalSeconds: number;
     priceUpdateSeconds: number;
-    auditRetentionDays: number;
   };
   
-  // Mode
   mode: AutopilotMode;
   
-  // DRY RUN Settings
-  dryRun: {
-    enabled: boolean;
-    logOnly: boolean;
-    mockFills: boolean;
-  };
-  
-  // Symbol Whitelist
   symbols: {
-    tier1: string[];    // Always allowed
-    tier2: string[];    // Max 10 additional liquid
+    whitelist: string[];
     blacklist: string[];
   };
 }
 
+// ============ $500 OPTIMIZED CONFIG ============
 export const autopilotConfig: AutopilotConfig = {
-  // ============ CAPITAL & RISK ============
   capital: {
-    totalEur: 200,              
-    maxRiskPercent: 10,         // Max drawdown = 20 EUR
-    hedgeSizeEur: 20,           // Total hedge size (10 EUR per leg)
-    legSizeEur: 10,             // Per leg
-    bufferEur: 40,              // Always reserved
-    maxDeployedEur: 160,        // 8 hedges × 20 EUR
-    reinvestThresholdEur: 400,  
+    totalUsd: 500,
+    totalEur: 460,
+    maxRiskPercent: 11,           // €50 max drawdown
+    hedgeSizeEur: 50,             // €25 LONG + €25 SHORT
+    legSizeEur: 25,
+    bufferEur: 60,                // 13% always reserved
+    maxDeployedEur: 400,          // 8 hedges × €50
   },
   
-  // ============ BUCKET ALLOCATION ============
-  // For hedge positions (not legs)
+  // Only SAFE tier for $500 capital
   buckets: {
-    safe: { percent: 60, maxPositions: 5 },     // 5 hedges max
-    medium: { percent: 30, maxPositions: 2 },   // 2 hedges max
-    high: { percent: 10, maxPositions: 1 },     // 1 hedge max (OFF by default)
+    safe: { percent: 100, maxPositions: 8 },
+    medium: { percent: 0, maxPositions: 0 },
+    high: { percent: 0, maxPositions: 0 },
   },
   
-  // ============ EXCHANGE WHITELIST ============
+  // ONLY Binance + OKX
   exchanges: [
-    { code: 'hyperliquid', name: 'Hyperliquid', allocation: 60, purpose: 'short', fundingInterval: 1 },
-    { code: 'binance', name: 'Binance', allocation: 40, purpose: 'long', fundingInterval: 8 },
-    { code: 'bybit', name: 'Bybit', allocation: 30, purpose: 'both', fundingInterval: 8 },
-    { code: 'okx', name: 'OKX', allocation: 30, purpose: 'both', fundingInterval: 8 },
-    { code: 'dydx', name: 'dYdX', allocation: 20, purpose: 'short', fundingInterval: 1 },
-    { code: 'kucoin', name: 'KuCoin', allocation: 20, purpose: 'long', fundingInterval: 8 },
+    { code: 'binance', name: 'Binance', allocation: 230, purpose: 'long', fundingInterval: 8 },
+    { code: 'okx', name: 'OKX', allocation: 230, purpose: 'short', fundingInterval: 8 },
   ],
   
-  // ============ FUNDING INTERVALS (hours) ============
   fundingIntervals: {
-    binance: 8, bybit: 8, okx: 8, kucoin: 8,
-    dydx: 1, hyperliquid: 1,
+    binance: 8,
+    okx: 8,
   },
   
-  // ============ PROFIT THRESHOLDS (STRICTER for LIVE) ============
+  // Strict thresholds for safety
   thresholds: {
     safe: {
-      minProfitBps: 25,          // 0.25% minimum per 8h
-      maxSpreadBps: 20,          // Max bid-ask spread 0.20%
-      maxTotalCostBps: 15,       // Max total costs 0.15%
-      minLiquidityScore: 70,     
+      minProfitBps: 30,           // 0.03% min per 8h
+      maxSpreadBps: 15,           // 0.15% max bid-ask
+      maxTotalCostBps: 12,
+      minLiquidityScore: 70,
     },
     medium: {
-      minProfitBps: 35,          
-      maxSpreadBps: 25,
-      maxTotalCostBps: 18,
+      minProfitBps: 40,
+      maxSpreadBps: 20,
+      maxTotalCostBps: 15,
       minLiquidityScore: 60,
     },
     high: {
-      minProfitBps: 50,          // HIGH tier OFF by default
-      maxSpreadBps: 35,
-      maxTotalCostBps: 25,
-      minLiquidityScore: 40,
+      minProfitBps: 50,
+      maxSpreadBps: 25,
+      maxTotalCostBps: 20,
+      minLiquidityScore: 50,
     },
   },
   
-  // ============ FEE & COST MODEL ============
   costs: {
-    takerFeeBps: 4,              // 4 bps per side (8 total)
-    slippageBps: 3,              // Estimated slippage
-    safetyBufferBps: 4,          // Extra buffer
-    maxTotalCostBps: 15,         // Hard limit
+    takerFeeBps: 4,
+    slippageBps: 2,
+    safetyBufferBps: 3,
+    maxTotalCostBps: 12,
   },
   
-  // ============ EXIT RULES (STRICTER) ============
   exit: {
-    holdingPeriodIntervals: 1,   // Min 1 funding interval
-    maxHoldingHours: 24,         
-    profitExitThresholdBps: 5,   // Exit if profit falls below 0.05%
-    pnlDriftLimitPercent: 0.6,   // STRICTER: Max delta-neutral drift
-    spreadCollapseThresholdBps: 5, // Exit if spread < 0.05%
-    spreadSpikeThresholdBps: 35,   // Exit if spread > 0.35%
-    dataStaleTimeoutSeconds: 120,  // Close all if no data > 2min
-    profitTargetPercent: 60,       // Exit after 60% of expected profit
+    holdingPeriodIntervals: 1,    // Min 8h
+    maxHoldingHours: 24,
+    profitExitThresholdBps: 1,    // Exit if < 0.01%
+    pnlDriftLimitPercent: 0.5,
   },
   
-  // ============ RISK MANAGER (STRICTER) ============
   risk: {
-    maxDailyDrawdownEur: 20,     // Kill switch trigger
-    cautionDrawdownEur: 10,      // Stop opening new positions
-    maxConcurrentHedges: 8,      // Max 8 hedges (160 EUR)
-    stressTestMultiplier: 2,     
+    maxDailyDrawdownEur: 50,      // Kill switch at €50
+    cautionDrawdownEur: 25,
+    maxConcurrentHedges: 8,
     killSwitchCooldownHours: 24,
-    notionalMatchTolerancePercent: 1, // Legs must match within 1%
-    maxLeverage: 2,              // Max 2x
-    defaultLeverage: 1,          // Default 1x
+    stressTestMultiplier: 2,
   },
   
-  // ============ WORKER SETTINGS ============
   worker: {
-    scanIntervalSeconds: 60,     
-    priceUpdateSeconds: 30,      
-    auditRetentionDays: 30,      
+    scanIntervalSeconds: 60,
+    priceUpdateSeconds: 30,
   },
   
-  // ============ MODE ============
-  mode: 'live',                  // Default LIVE (not paper)
+  mode: 'test',                   // Default to TEST mode
   
-  // ============ DRY RUN SETTINGS ============
-  dryRun: {
-    enabled: false,              // Toggle in UI
-    logOnly: true,               
-    mockFills: false,            // No paper PnL simulation
-  },
-  
-  // ============ SYMBOL WHITELIST ============
   symbols: {
-    tier1: ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE', 'BNB', 'LINK', 'LTC'],
-    tier2: ['ADA', 'AVAX', 'MATIC', 'DOT', 'ATOM', 'UNI', 'AAVE', 'ARB', 'OP', 'SUI'],
-    blacklist: [], // Auto-reject is_meme=true from DB
+    whitelist: ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE', 'BNB', 'LINK', 'LTC', 'ADA', 'AVAX', 'MATIC', 'DOT', 'ATOM', 'UNI', 'ARB'],
+    blacklist: [],
   },
 };
 
@@ -238,20 +179,6 @@ export function getFundingIntervalHours(exchange: string, config: AutopilotConfi
 
 export function isExchangeAllowed(exchange: string, config: AutopilotConfig = autopilotConfig): boolean {
   return config.exchanges.some(e => e.code.toLowerCase() === exchange.toLowerCase());
-}
-
-export function getExchangeAllocation(exchange: string, config: AutopilotConfig = autopilotConfig): ExchangeAllocation | undefined {
-  return config.exchanges.find(e => e.code.toLowerCase() === exchange.toLowerCase());
-}
-
-export function isSymbolWhitelisted(symbol: string, config: AutopilotConfig = autopilotConfig): boolean {
-  const upperSymbol = symbol.toUpperCase().replace(/USDT?$/, '');
-  return config.symbols.tier1.includes(upperSymbol) || config.symbols.tier2.includes(upperSymbol);
-}
-
-export function isSymbolBlacklisted(symbol: string, config: AutopilotConfig = autopilotConfig): boolean {
-  const upperSymbol = symbol.toUpperCase().replace(/USDT?$/, '');
-  return config.symbols.blacklist.includes(upperSymbol);
 }
 
 export function getRiskLevel(drawdownEur: number, config: AutopilotConfig = autopilotConfig): RiskLevel {
@@ -275,4 +202,9 @@ export function canOpenNewHedge(
   if (currentHedges >= config.risk.maxConcurrentHedges) return false;
   if (deployedEur + config.capital.hedgeSizeEur > config.capital.maxDeployedEur) return false;
   return true;
+}
+
+export function calculateAPR(spreadBps: number): number {
+  const periodsPerYear = (365 * 24) / 8; // 8h intervals
+  return spreadBps * periodsPerYear / 100;
 }

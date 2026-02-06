@@ -1,7 +1,7 @@
 // src/types/autopilot.ts - TypeScript types for LIVE Autopilot System
 
 export type RiskTier = 'safe' | 'medium' | 'high';
-export type AutopilotMode = 'off' | 'live' | 'dryrun';
+export type AutopilotMode = 'off' | 'live' | 'test';
 export type PositionStatus = 'open' | 'closed' | 'stopped';
 export type AuditLevel = 'info' | 'warn' | 'error' | 'action';
 export type RiskLevel = 'normal' | 'cautious' | 'stopped';

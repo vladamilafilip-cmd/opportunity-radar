@@ -71,7 +71,7 @@ export function PersonalRobotWidget() {
     fetchPositions();
   };
 
-  const handleModeChange = (newMode: 'off' | 'dryrun' | 'live') => {
+  const handleModeChange = (newMode: 'off' | 'test' | 'live') => {
     setMode(newMode);
   };
 
@@ -113,11 +113,11 @@ export function PersonalRobotWidget() {
           </Button>
           <Button
             size="sm"
-            variant={mode === 'dryrun' ? 'secondary' : 'ghost'}
-            onClick={() => handleModeChange('dryrun')}
-            className={cn("h-7 text-xs", mode === 'dryrun' && "bg-warning/20 text-warning")}
+            variant={mode === 'test' ? 'secondary' : 'ghost'}
+            onClick={() => handleModeChange('test')}
+            className={cn("h-7 text-xs", mode === 'test' && "bg-warning/20 text-warning")}
           >
-            DRY RUN
+            TEST
           </Button>
         </div>
       </CardHeader>

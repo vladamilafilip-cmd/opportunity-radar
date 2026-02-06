@@ -9,6 +9,7 @@ import Landing from "./pages/Landing";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Dashboard from "./pages/Dashboard";
+import FundingBot from "./pages/FundingBot";
 import Opportunity from "./pages/Opportunity";
 import Trading from "./pages/Trading";
 import Billing from "./pages/Billing";
@@ -209,6 +210,7 @@ const App = () => (
               <Route path="/register" element={<PublicRoute><Register /></PublicRoute>} />
               
               {/* Protected routes */}
+              <Route path="/bot" element={<ProtectedRoute><FundingBot /></ProtectedRoute>} />
               <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
               <Route path="/opportunity/:id" element={<ProtectedRoute><Opportunity /></ProtectedRoute>} />
               <Route path="/trading" element={<ProtectedRoute><Trading /></ProtectedRoute>} />
