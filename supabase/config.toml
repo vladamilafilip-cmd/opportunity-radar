@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.autopilot-control]
 verify_jwt = false
+
+[functions.autopilot-executor]
+verify_jwt = false
