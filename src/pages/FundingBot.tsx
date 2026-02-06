@@ -8,7 +8,6 @@ import {
   Square, 
   RefreshCw, 
   AlertTriangle,
-  LogOut,
   Settings
 } from 'lucide-react';
 import { useAutopilotStore } from '@/store/autopilotStore';
@@ -21,11 +20,9 @@ import { autopilotConfig } from '../../config/autopilot';
 import type { AutopilotMode } from '../../config/autopilot';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { useAuthStore } from '@/store/authStore';
 import { Link } from 'react-router-dom';
 
 export default function FundingBot() {
-  const { logout } = useAuthStore();
   const {
     mode,
     isRunning,
@@ -167,9 +164,6 @@ export default function FundingBot() {
                     <Settings className="h-4 w-4" />
                   </Button>
                 </Link>
-                <Button variant="ghost" size="icon" onClick={logout}>
-                  <LogOut className="h-4 w-4" />
-                </Button>
               </div>
             </div>
           </div>

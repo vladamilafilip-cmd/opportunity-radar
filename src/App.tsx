@@ -193,35 +193,24 @@ const App = () => (
         <BrowserRouter>
           <AuthInitializer>
             <Routes>
-              {/* Health check - ALWAYS accessible, no auth */}
+              {/* Main bot page - no auth required */}
+              <Route path="/" element={<FundingBot />} />
+              <Route path="/bot" element={<FundingBot />} />
+              
+              {/* Settings */}
+              <Route path="/settings" element={<Settings />} />
+              
+              {/* Health check */}
               <Route path="/health" element={<HealthCheck />} />
               
-              {/* Landing - NO auth wrapper, renders immediately */}
-              <Route path="/" element={<Landing />} />
-              
-              {/* Legal pages - public access */}
+              {/* Legal pages */}
               <Route path="/terms" element={<TermsOfService />} />
               <Route path="/privacy" element={<PrivacyPolicy />} />
               <Route path="/risk-disclosure" element={<RiskDisclosure />} />
               <Route path="/disclaimer" element={<Disclaimer />} />
               
-              {/* Auth routes - wrapped in PublicRoute */}
-              <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
-              <Route path="/register" element={<PublicRoute><Register /></PublicRoute>} />
-              
-              {/* Protected routes */}
-              <Route path="/bot" element={<ProtectedRoute><FundingBot /></ProtectedRoute>} />
-              <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-              <Route path="/opportunity/:id" element={<ProtectedRoute><Opportunity /></ProtectedRoute>} />
-              <Route path="/trading" element={<ProtectedRoute><Trading /></ProtectedRoute>} />
-              <Route path="/billing" element={<ProtectedRoute><Billing /></ProtectedRoute>} />
-              <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
-              
-              {/* Admin route - validates role from database */}
-              <Route path="/admin" element={<AdminRoute><Admin /></AdminRoute>} />
-              
               {/* Catch-all */}
-              <Route path="*" element={<NotFound />} />
+              <Route path="*" element={<FundingBot />} />
             </Routes>
           </AuthInitializer>
         </BrowserRouter>
