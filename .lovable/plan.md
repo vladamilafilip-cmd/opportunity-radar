@@ -1,82 +1,41 @@
 
-# Plan: PnL Praćenje i Detaljan Prikaz Pozicija
 
-## Šta ćemo uraditi
+# Plan: Pametnije filtriranje prilika za Binance/OKX/Bybit
 
-### 1. Simulacija Unrealized PnL-a (Nerealizovani dobitak/gubitak)
-Trenutno sve pozicije imaju `unrealized_pnl_eur = 0` jer nema dinamičkog kalkulisanja. Za TEST mode, dodaćemo simulaciju koja računa PnL na osnovu vremena i entry funding spread-a.
+## Problem
+Bot traži prvih 500 prilika sortirano po spreadu, ali SVE prvih 500 su Bitget→OKX parovi. Tvoje Binance/OKX/Bybit prilike (WIF, AVAX) postoje ali su van tog ranga.
 
-### 2. Prošireni CapitalWidget sa Unrealized PnL
-Dodaćemo peti widget koji prikazuje **UNREALIZED** - ukupan nerealizovani PnL svih otvorenih pozicija.
+## Rešenje
+Umesto da filtriramo na klijentu nakon fetch-a, potrebno je da baza vrati SAMO prilike za Binance/OKX/Bybit direktno u SQL upitu.
 
-### 3. Detaljniji prikaz pozicija
-Proširićemo `PositionsCard` sa:
-- Entry spread i očekivani APR
-- Funding collected (simulirano)
-- Broj intervala (8h perioda)
-- Expand/Collapse za više detalja
+## Tehnički koraci
 
----
+### 1. Izmena autopilot-executor funkcije
+Promeniti upit da filtrira po exchange ID-ovima direktno u SQL-u:
 
-## Tehnički detalji
-
-### A. `src/store/autopilotStore.ts`
-Dodaćemo funkciju `simulatePnl()` koja za TEST mode računa:
-```typescript
-function simulatePnl(position: AutopilotPosition): number {
-  const hoursOpen = (Date.now() - new Date(position.entry_ts).getTime()) / (1000 * 60 * 60);
-  const intervalsComplete = Math.floor(hoursOpen / 8);
-  const fundingPerInterval = position.size_eur * (position.entry_funding_spread_8h / 100);
-  // Simuliraj 70% uspešnosti (30% loss od spread/fees)
-  const grossFunding = intervalsComplete * fundingPerInterval;
-  const costs = intervalsComplete * position.size_eur * 0.0008; // 8 bps per interval
-  return grossFunding - costs;
-}
+```text
+1. Dobiti ID-eve za Binance, OKX i Bybit iz exchanges tabele
+2. Filtrirati arbitrage_opportunities gde su oba exchange-a u tom skupu
+3. Ukloniti client-side filtriranje jer više nije potrebno
 ```
 
-Ažuriraćemo `fetchPositions` da računa simulirani PnL za svaku poziciju.
-
-### B. `src/components/bot/CapitalWidget.tsx`
-Proširićemo grid sa 4 na 5 kolona i dodati:
+### 2. Nova logika upita
 ```
-UNREALIZED: €X.XX
-(Od otvorenih pozicija)
+SQL filter: long_exchange_id IN (binance_id, okx_id, bybit_id)
+       AND short_exchange_id IN (binance_id, okx_id, bybit_id)
+       AND long_exchange_id != short_exchange_id
 ```
 
-Props će dobiti novi `unrealizedPnl: number`.
+### 3. Očekivani rezultat
+- **WIF/USDT** Bybit→Binance @ 14.78 bps → automatski entry
+- **WIF/USDT** Bybit→OKX @ 11.79 bps  
+- **AVAX/USDT** Bybit→Binance @ 6.05 bps
 
-### C. `src/components/bot/PositionsCard.tsx`
-Svaka pozicija će prikazivati:
-- **Symbol** + L/S berze
-- **Size**: €50
-- **Entry Spread**: 0.28%
-- **Expected APR**: ~122%
-- **Intervals**: 2/3 (collected/open)
-- **Funding Collected**: €0.14
-- **Unrealized PnL**: +€0.08 / -€0.02
-- **Duration**: 16h
+### 4. Dodatno
+- Dodati logging da prikaže nađene validne prilike pre entry-a
+- Deploy nove verzije funkcije
 
-Dodaćemo expandable sekciju za svaku poziciju sa dodatnim detaljima.
+## Vremenski okvir
+- Implementacija: ~5 minuta
+- Prva pozicija: sledeći cron ciklus (~1 minut nakon deploy-a)
 
-### D. `src/pages/FundingBot.tsx`
-Prosledićemo `unrealizedPnl` iz store-a u `CapitalWidget`.
-
----
-
-## Očekivani rezultat
-
-| Metrika | Pre | Posle |
-|---------|-----|-------|
-| Unrealized PnL widget | ❌ | ✅ €X.XX |
-| Position PnL simulacija | €0.00 | Dinamički |
-| Position detalji | Osnovno | Prošireno |
-| Funding collected | €0.00 | Simulirano |
-
----
-
-## Fajlovi za izmenu
-
-1. `src/store/autopilotStore.ts` - Dodati simulatePnl funkciju i state za unrealizedPnl
-2. `src/components/bot/CapitalWidget.tsx` - Dodati 5. widget za Unrealized PnL
-3. `src/components/bot/PositionsCard.tsx` - Proširiti sa detaljima i expandable sekcijom
-4. `src/pages/FundingBot.tsx` - Proslediti unrealizedPnl prop
