@@ -41,6 +41,10 @@ export interface AutopilotConfig {
   fundingIntervals: Record<string, number>;
   thresholds: Record<RiskTier, ThresholdConfig>;
   
+  // Exchange filtering
+  primaryExchanges: string[];
+  extendedExchanges: string[];
+  
   costs: {
     takerFeeBps: number;
     slippageBps: number;
@@ -95,16 +99,23 @@ export const autopilotConfig: AutopilotConfig = {
     high: { percent: 5, maxPositions: 0 },  // Display only, no auto-trade
   },
   
-  // ONLY Binance + OKX (where you have funds)
+  // Binance + OKX (primary) + Bybit (high yield, marked)
   exchanges: [
     { code: 'binance', name: 'Binance', allocation: 230, purpose: 'both', fundingInterval: 8 },
     { code: 'okx', name: 'OKX', allocation: 230, purpose: 'both', fundingInterval: 8 },
+    { code: 'bybit', name: 'Bybit', allocation: 0, purpose: 'both', fundingInterval: 8 }, // Display only, no auto-allocation
   ],
   
   fundingIntervals: {
     binance: 8,
     okx: 8,
+    bybit: 8,
   },
+  
+  // Primary exchanges (for filtering)
+  primaryExchanges: ['binance', 'okx'],
+  // Extended exchanges (shown but marked)
+  extendedExchanges: ['bybit'],
   
   // Optimized thresholds for Binance + OKX arbitrage
   thresholds: {
