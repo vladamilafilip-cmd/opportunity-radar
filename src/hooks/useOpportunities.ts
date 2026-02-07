@@ -7,12 +7,21 @@ import { autopilotConfig } from '../../config/autopilot';
 
 export type RiskTier = 'safe' | 'medium' | 'high';
 
-// STRICT: Only these exchanges are allowed
-const ALLOWED_EXCHANGES = ['binance', 'okx'];
+// Primary exchanges (full trust)
+const PRIMARY_EXCHANGES = ['binance', 'okx'];
+// Extended exchanges (shown but marked)
+const EXTENDED_EXCHANGES = ['bybit'];
+// All allowed exchanges
+const ALL_ALLOWED_EXCHANGES = [...PRIMARY_EXCHANGES, ...EXTENDED_EXCHANGES];
 
 function isBothExchangesAllowed(longEx: string, shortEx: string): boolean {
-  return ALLOWED_EXCHANGES.includes(longEx.toLowerCase()) && 
-         ALLOWED_EXCHANGES.includes(shortEx.toLowerCase());
+  return ALL_ALLOWED_EXCHANGES.includes(longEx.toLowerCase()) && 
+         ALL_ALLOWED_EXCHANGES.includes(shortEx.toLowerCase());
+}
+
+function hasExtendedExchange(longEx: string, shortEx: string): boolean {
+  return EXTENDED_EXCHANGES.includes(longEx.toLowerCase()) || 
+         EXTENDED_EXCHANGES.includes(shortEx.toLowerCase());
 }
 
 export interface Opportunity {
@@ -25,6 +34,7 @@ export interface Opportunity {
   score: number;
   riskTier: RiskTier;
   isNew?: boolean;
+  isExtended?: boolean; // Uses Bybit or other extended exchange
 }
 
 // Determine risk tier based on spread and score
@@ -132,7 +142,7 @@ export function useOpportunities() {
           const apr = spreadBps * 1095 / 100; // Annualized
           const score = Math.min(100, Math.round(50 + spreadBps + (longSide.liquidity_score || 0) / 2));
 
-          // STRICT: Only add if both exchanges are Binance or OKX
+          // Only add if both exchanges are allowed
           if (!isBothExchangesAllowed(longExCode, shortExCode)) return;
 
           syntheticOpps.push({
@@ -145,6 +155,7 @@ export function useOpportunities() {
             score,
             riskTier: calculateRiskTier(spreadBps, score),
             isNew: true,
+            isExtended: hasExtendedExchange(longExCode, shortExCode),
           });
         });
 
@@ -152,7 +163,7 @@ export function useOpportunities() {
         return;
       }
 
-      // Map opportunities and STRICTLY filter to Binance + OKX only
+      // Map opportunities and filter to allowed exchanges
       const mapped: Opportunity[] = data
         .map(opp => {
           const longExCode = (opp.long_exchange as any)?.code?.toLowerCase() || '';
@@ -170,6 +181,7 @@ export function useOpportunities() {
             score,
             riskTier: calculateRiskTier(spreadBps, score),
             isNew: new Date(opp.ts).getTime() > Date.now() - 300000,
+            isExtended: hasExtendedExchange(longExCode, shortExCode),
             longExCode,
             shortExCode,
           };

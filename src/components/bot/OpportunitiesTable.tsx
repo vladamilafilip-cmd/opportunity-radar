@@ -2,7 +2,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Sparkles, TrendingUp, Loader2, Shield, AlertTriangle, Flame } from 'lucide-react';
+import { Sparkles, TrendingUp, Loader2, Shield, AlertTriangle, Flame, ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export type RiskTier = 'safe' | 'medium' | 'high';
@@ -17,6 +17,7 @@ export interface Opportunity {
   score: number;
   riskTier: RiskTier;
   isNew?: boolean;
+  isExtended?: boolean; // Uses Bybit or other extended exchange
 }
 
 interface OpportunitiesTableProps {
@@ -97,22 +98,33 @@ export function OpportunitiesTable({
                   key={opp.id}
                   className={cn(
                     "grid grid-cols-12 gap-2 items-center p-3 rounded-lg hover:bg-muted/50 transition-colors",
-                    opp.isNew && "bg-success/5 border border-success/20"
+                    opp.isNew && "bg-success/5 border border-success/20",
+                    opp.isExtended && "bg-primary/5 border border-primary/20"
                   )}
                 >
-                  <div className="col-span-2 font-mono font-medium flex items-center gap-1">
+                  <div className="col-span-2 font-mono font-medium flex items-center gap-1 flex-wrap">
                     {opp.symbol}
                     {opp.isNew && (
                       <Badge className="bg-success/20 text-success border-success/30 text-[10px] px-1">
                         NEW
                       </Badge>
                     )}
+                    {opp.isExtended && (
+                      <Badge className="bg-primary/20 text-primary border-primary/30 text-[10px] px-1 gap-0.5">
+                        <ExternalLink className="h-2 w-2" />
+                        3RD
+                      </Badge>
+                    )}
                   </div>
                   
                   <div className="col-span-3 text-xs">
-                    <span className="text-success">L:{opp.longExchange}</span>
+                    <span className={cn("text-success", opp.isExtended && opp.longExchange.toLowerCase().includes('bybit') && "text-primary font-medium")}>
+                      L:{opp.longExchange}
+                    </span>
                     {' / '}
-                    <span className="text-destructive">S:{opp.shortExchange}</span>
+                    <span className={cn("text-destructive", opp.isExtended && opp.shortExchange.toLowerCase().includes('bybit') && "text-primary font-medium")}>
+                      S:{opp.shortExchange}
+                    </span>
                   </div>
                   
                   <div className="col-span-2 text-right">
