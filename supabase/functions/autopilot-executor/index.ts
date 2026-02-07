@@ -114,6 +114,8 @@ Deno.serve(async (req) => {
     }
 
     // 4. Find best opportunity from allowed exchanges
+    // NOTE: We intentionally fetch a wider set and sort by net edge, because
+    // Binance/OKX/Bybit opportunities may not always be in the top by score.
     const { data: opportunities, error: oppError } = await supabase
       .from('arbitrage_opportunities')
       .select(`
@@ -128,8 +130,8 @@ Deno.serve(async (req) => {
       `)
       .eq('status', 'active')
       .gte('net_edge_8h_bps', 5) // Min 5 bps profit
-      .order('opportunity_score', { ascending: false })
-      .limit(50);
+      .order('net_edge_8h_bps', { ascending: false })
+      .limit(500);
 
     if (oppError) throw oppError;
 
