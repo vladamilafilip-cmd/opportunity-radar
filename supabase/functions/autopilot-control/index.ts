@@ -30,7 +30,6 @@ function json(data: unknown, status = 200) {
 interface ExchangeClients {
   binance: ccxt.binance;
   okx: ccxt.okx;
-  bybit: ccxt.bybit;
 }
 
 interface HedgeResult {
@@ -54,6 +53,7 @@ function initializeExchanges(useSandbox: boolean = false): ExchangeClients | nul
   const okxSecret = Deno.env.get('OKX_API_SECRET');
   const okxPassphrase = Deno.env.get('OKX_PASSPHRASE');
 
+  // Check minimum required keys (Binance + OKX only)
   if (!binanceKey || !binanceSecret || !okxKey || !okxSecret || !okxPassphrase) {
     return null;
   }
@@ -78,27 +78,7 @@ function initializeExchanges(useSandbox: boolean = false): ExchangeClients | nul
     okx.setSandboxMode(true);
   }
 
-  // Bybit - skip in sandbox mode unless it has dedicated testnet keys
-  const bybitTestnetKey = Deno.env.get('BYBIT_TESTNET_API_KEY');
-  const bybitTestnetSecret = Deno.env.get('BYBIT_TESTNET_API_SECRET');
-  const bybitKey = useSandbox ? bybitTestnetKey : (Deno.env.get('BYBIT_API_KEY') || binanceKey);
-  const bybitSecret = useSandbox ? bybitTestnetSecret : (Deno.env.get('BYBIT_API_SECRET') || binanceSecret);
-  
-  // Create bybit client only if we have valid keys (not null in sandbox mode)
-  let bybit: ccxt.bybit | null = null;
-  if (bybitKey && bybitSecret) {
-    bybit = new ccxt.bybit({
-      apiKey: bybitKey,
-      secret: bybitSecret,
-      options: { defaultType: 'linear' },
-    });
-
-    if (useSandbox) {
-      bybit.setSandboxMode(true);
-    }
-  }
-
-  return { binance, okx, bybit: bybit as ccxt.bybit };
+  return { binance, okx };
 }
 
 function normalizeCcxtSymbol(symbol: string): string {
@@ -110,7 +90,6 @@ function getExchangeClient(exchanges: ExchangeClients, exchangeName: string): cc
   const name = exchangeName.toLowerCase();
   if (name.includes('binance')) return exchanges.binance;
   if (name.includes('okx') || name.includes('okex')) return exchanges.okx;
-  if (name.includes('bybit')) return exchanges.bybit || null; // May be null in sandbox without testnet keys
   return null;
 }
 
