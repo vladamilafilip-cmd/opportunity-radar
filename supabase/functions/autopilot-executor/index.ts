@@ -25,9 +25,12 @@ interface AutopilotConfig {
 
 const DEFAULT_CONFIG: AutopilotConfig = {
   capital: { hedgeSizeEur: 50, maxDeployedEur: 400 },
-  thresholds: { safe: { minProfitBps: 30, maxSpreadBps: 15 } },
+  thresholds: { safe: { minProfitBps: 5, maxSpreadBps: 25 } }, // Lowered from 30 to 5 bps
   risk: { maxConcurrentHedges: 8, maxDailyDrawdownEur: 50 },
 };
+
+// Allowed exchanges for trading
+const ALLOWED_EXCHANGES = ['binance', 'okx', 'bybit'];
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -124,19 +127,19 @@ Deno.serve(async (req) => {
         short_exchange:short_exchange_id (code, name)
       `)
       .eq('status', 'active')
-      .gte('opportunity_score', 70)
+      .gte('opportunity_score', 40) // Lowered from 70 to 40
       .in('risk_tier', ['safe', 'medium'])
       .order('opportunity_score', { ascending: false })
-      .limit(5);
+      .limit(10);
 
     if (oppError) throw oppError;
 
-    // Filter for Binance + OKX only
+    // Filter for allowed exchanges (Binance, OKX, Bybit)
     const validOpps = (opportunities || []).filter(opp => {
       const longEx = (opp.long_exchange as any)?.code?.toLowerCase();
       const shortEx = (opp.short_exchange as any)?.code?.toLowerCase();
-      return (longEx === 'binance' || longEx === 'okx') &&
-             (shortEx === 'binance' || shortEx === 'okx') &&
+      return ALLOWED_EXCHANGES.includes(longEx) &&
+             ALLOWED_EXCHANGES.includes(shortEx) &&
              longEx !== shortEx;
     });
 
