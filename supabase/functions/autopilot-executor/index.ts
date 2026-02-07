@@ -113,7 +113,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    // 4. Find best opportunity
+    // 4. Find best opportunity from allowed exchanges
     const { data: opportunities, error: oppError } = await supabase
       .from('arbitrage_opportunities')
       .select(`
@@ -127,21 +127,31 @@ Deno.serve(async (req) => {
         short_exchange:short_exchange_id (code, name)
       `)
       .eq('status', 'active')
-      .gte('opportunity_score', 40) // Lowered from 70 to 40
-      .in('risk_tier', ['safe', 'medium'])
+      .gte('net_edge_8h_bps', 5) // Min 5 bps profit
       .order('opportunity_score', { ascending: false })
-      .limit(10);
+      .limit(50);
 
     if (oppError) throw oppError;
 
-    // Filter for allowed exchanges (Binance, OKX, Bybit)
+    // Filter for allowed exchanges (Binance, OKX, Bybit) and safe/medium risk
     const validOpps = (opportunities || []).filter(opp => {
       const longEx = (opp.long_exchange as any)?.code?.toLowerCase();
       const shortEx = (opp.short_exchange as any)?.code?.toLowerCase();
-      return ALLOWED_EXCHANGES.includes(longEx) &&
-             ALLOWED_EXCHANGES.includes(shortEx) &&
-             longEx !== shortEx;
+      const riskTier = opp.risk_tier || 'medium';
+      
+      // Must be on allowed exchanges
+      if (!ALLOWED_EXCHANGES.includes(longEx) || !ALLOWED_EXCHANGES.includes(shortEx)) {
+        return false;
+      }
+      // Must be different exchanges
+      if (longEx === shortEx) return false;
+      // Only safe or medium risk for auto-trading
+      if (riskTier === 'high') return false;
+      
+      return true;
     });
+
+    log(`Found ${opportunities?.length || 0} total, ${validOpps.length} valid for Binance/OKX/Bybit`);
 
     if (validOpps.length === 0) {
       log('No valid opportunities found');
