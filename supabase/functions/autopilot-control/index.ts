@@ -105,23 +105,36 @@ async function executeLiveHedge(
     const shortEx = getExchangeClient(exchanges, shortExchange);
 
     if (!longEx || !shortEx) {
-      return { success: false, longPrice: 0, shortPrice: 0, error: `Exchange not found` };
+      return { success: false, longPrice: 0, shortPrice: 0, error: `Exchange not found: ${longExchange}/${shortExchange}` };
     }
 
     const ccxtSymbol = normalizeCcxtSymbol(symbol);
-    const ticker = await longEx.fetchTicker(ccxtSymbol);
-    const price = ticker.last || 0;
+    console.log(`[autopilot-control] Executing hedge: ${ccxtSymbol} on ${longExchange}/${shortExchange}`);
+    
+    // Fetch price from long exchange
+    let price: number;
+    try {
+      const ticker = await longEx.fetchTicker(ccxtSymbol);
+      price = ticker.last || 0;
+      console.log(`[autopilot-control] Fetched price: ${price}`);
+    } catch (tickerError) {
+      return { success: false, longPrice: 0, shortPrice: 0, error: `Failed to fetch price: ${String(tickerError)}` };
+    }
     
     if (price === 0) {
-      return { success: false, longPrice: 0, shortPrice: 0, error: 'Could not fetch price' };
+      return { success: false, longPrice: 0, shortPrice: 0, error: 'Could not fetch price (price=0)' };
     }
 
     const size = sizeEur / price;
+    console.log(`[autopilot-control] Order size: ${size} (${sizeEur} EUR at ${price})`);
 
     const [longOrder, shortOrder] = await Promise.allSettled([
       longEx.createMarketOrder(ccxtSymbol, 'buy', size),
       shortEx.createMarketOrder(ccxtSymbol, 'sell', size),
     ]);
+
+    console.log(`[autopilot-control] Long order result: ${longOrder.status}`);
+    console.log(`[autopilot-control] Short order result: ${shortOrder.status}`);
 
     if (longOrder.status === 'fulfilled' && shortOrder.status === 'fulfilled') {
       return {
@@ -133,19 +146,24 @@ async function executeLiveHedge(
       };
     }
 
+    // Extract detailed error messages
+    const longError = longOrder.status === 'rejected' ? String(longOrder.reason) : null;
+    const shortError = shortOrder.status === 'rejected' ? String(shortOrder.reason) : null;
+
     // Atomic rollback on partial failure
     if (longOrder.status === 'fulfilled' && shortOrder.status === 'rejected') {
       try { await longEx.createMarketOrder(ccxtSymbol, 'sell', size); } catch {}
-      return { success: false, longPrice: 0, shortPrice: 0, error: `Short leg failed: ${shortOrder.reason}` };
+      return { success: false, longPrice: 0, shortPrice: 0, error: `Short leg failed: ${shortError}` };
     }
 
     if (shortOrder.status === 'fulfilled' && longOrder.status === 'rejected') {
       try { await shortEx.createMarketOrder(ccxtSymbol, 'buy', size); } catch {}
-      return { success: false, longPrice: 0, shortPrice: 0, error: `Long leg failed: ${longOrder.reason}` };
+      return { success: false, longPrice: 0, shortPrice: 0, error: `Long leg failed: ${longError}` };
     }
 
-    return { success: false, longPrice: 0, shortPrice: 0, error: 'Both legs failed' };
+    return { success: false, longPrice: 0, shortPrice: 0, error: `Both legs failed - Long: ${longError}, Short: ${shortError}` };
   } catch (error) {
+    console.error(`[autopilot-control] Hedge execution error:`, error);
     return { success: false, longPrice: 0, shortPrice: 0, error: String(error) };
   }
 }
