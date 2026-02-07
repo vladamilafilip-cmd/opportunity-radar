@@ -7,21 +7,12 @@ import { autopilotConfig } from '../../config/autopilot';
 
 export type RiskTier = 'safe' | 'medium' | 'high';
 
-// Primary exchanges (full trust)
-const PRIMARY_EXCHANGES = ['binance', 'okx'];
-// Extended exchanges (shown but marked)
-const EXTENDED_EXCHANGES = ['bybit'];
-// All allowed exchanges
-const ALL_ALLOWED_EXCHANGES = [...PRIMARY_EXCHANGES, ...EXTENDED_EXCHANGES];
+// Allowed exchanges (Binance + OKX only - Bybit removed)
+const ALLOWED_EXCHANGES = ['binance', 'okx'];
 
 function isBothExchangesAllowed(longEx: string, shortEx: string): boolean {
-  return ALL_ALLOWED_EXCHANGES.includes(longEx.toLowerCase()) && 
-         ALL_ALLOWED_EXCHANGES.includes(shortEx.toLowerCase());
-}
-
-function hasExtendedExchange(longEx: string, shortEx: string): boolean {
-  return EXTENDED_EXCHANGES.includes(longEx.toLowerCase()) || 
-         EXTENDED_EXCHANGES.includes(shortEx.toLowerCase());
+  return ALLOWED_EXCHANGES.includes(longEx.toLowerCase()) && 
+         ALLOWED_EXCHANGES.includes(shortEx.toLowerCase());
 }
 
 export interface Opportunity {
@@ -34,7 +25,6 @@ export interface Opportunity {
   score: number;
   riskTier: RiskTier;
   isNew?: boolean;
-  isExtended?: boolean; // Uses Bybit or other extended exchange
 }
 
 // Determine risk tier based on spread and score
@@ -53,15 +43,15 @@ export function useOpportunities() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Generate fallback opportunities when no real data available
+  // Generate fallback opportunities when no real data available (Binance + OKX only)
   const generateFallbackOpportunities = (): Opportunity[] => {
     const pairs = [
       { symbol: 'BTC/USDT', longEx: 'Binance', shortEx: 'OKX', spreadBps: 28, apr: 122, score: 82 },
       { symbol: 'ETH/USDT', longEx: 'OKX', shortEx: 'Binance', spreadBps: 24, apr: 105, score: 78 },
       { symbol: 'SOL/USDT', longEx: 'Binance', shortEx: 'OKX', spreadBps: 35, apr: 153, score: 75 },
-      { symbol: 'DOGE/USDT', longEx: 'Binance', shortEx: 'Bybit', spreadBps: 42, apr: 183, score: 71, isExtended: true },
+      { symbol: 'DOGE/USDT', longEx: 'OKX', shortEx: 'Binance', spreadBps: 32, apr: 140, score: 71 },
       { symbol: 'XRP/USDT', longEx: 'OKX', shortEx: 'Binance', spreadBps: 22, apr: 96, score: 74 },
-      { symbol: 'PEPE/USDT', longEx: 'Bybit', shortEx: 'OKX', spreadBps: 65, apr: 284, score: 68, isExtended: true },
+      { symbol: 'PEPE/USDT', longEx: 'Binance', shortEx: 'OKX', spreadBps: 45, apr: 196, score: 68 },
       { symbol: 'LINK/USDT', longEx: 'Binance', shortEx: 'OKX', spreadBps: 19, apr: 83, score: 72 },
       { symbol: 'ARB/USDT', longEx: 'OKX', shortEx: 'Binance', spreadBps: 31, apr: 135, score: 70 },
     ];
@@ -76,7 +66,6 @@ export function useOpportunities() {
       score: p.score,
       riskTier: calculateRiskTier(p.spreadBps, p.score),
       isNew: idx < 3,
-      isExtended: p.isExtended || false,
     }));
   };
 
@@ -143,7 +132,6 @@ export function useOpportunities() {
             score,
             riskTier: calculateRiskTier(spreadBps, score),
             isNew: new Date(opp.ts).getTime() > Date.now() - 300000,
-            isExtended: hasExtendedExchange(longExCode, shortExCode),
           };
         })
         .filter(Boolean) as Opportunity[];
