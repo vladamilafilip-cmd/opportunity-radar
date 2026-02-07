@@ -119,27 +119,41 @@ function calculateExchangeBalances(positions: AutopilotPosition[]): ExchangeBala
 }
 
 // Simulate PnL based on time elapsed and entry spread (for TEST mode)
+// Also normalizes legacy data where spread was stored as percent instead of bps
 function simulatePnl(position: AutopilotPosition): { unrealizedPnl: number; fundingCollected: number; intervals: number } {
   const hoursOpen = (Date.now() - new Date(position.entry_ts).getTime()) / (1000 * 60 * 60);
   const intervalsComplete = Math.floor(hoursOpen / 8);
   
-  // Funding per 8h interval = size * spread% (already in bps, need to convert)
-  const spreadPercent = position.entry_funding_spread_8h / 100; // Convert bps to percent
-  const fundingPerInterval = position.size_eur * (spreadPercent / 100); // Convert percent to decimal
+  // Normalize spread: detect if stored as percent (< 1) vs bps (>= 1)
+  // Old format: 0.35 means 0.35% = 35 bps
+  // New format: 14.78 means 14.78 bps
+  let spreadBps = position.entry_funding_spread_8h;
+  if (spreadBps > 0 && spreadBps < 1) {
+    // Legacy percent format - convert to bps (multiply by 100)
+    spreadBps = spreadBps * 100;
+  }
+  
+  // Funding per 8h interval = size * (spreadBps / 10000)
+  const spreadDecimal = spreadBps / 10000; // Convert bps to decimal
+  const fundingPerInterval = position.size_eur * spreadDecimal;
   
   // Gross funding collected
   const grossFunding = intervalsComplete * fundingPerInterval;
+  
+  // Also add partial interval progress for smoother updates
+  const partialProgress = (hoursOpen % 8) / 8;
+  const partialFunding = partialProgress * fundingPerInterval;
   
   // Costs: ~8 bps per interval (fees + slippage)
   const costsPerInterval = position.size_eur * 0.0008;
   const totalCosts = intervalsComplete * costsPerInterval;
   
-  // Net unrealized PnL
-  const unrealizedPnl = grossFunding - totalCosts;
+  // Net unrealized PnL (includes partial progress for visual feedback)
+  const unrealizedPnl = grossFunding + partialFunding - totalCosts;
   
   return {
     unrealizedPnl,
-    fundingCollected: grossFunding,
+    fundingCollected: grossFunding + partialFunding,
     intervals: intervalsComplete,
   };
 }
