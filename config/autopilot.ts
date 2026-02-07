@@ -159,10 +159,22 @@ export const autopilotConfig: AutopilotConfig = {
   
   symbols: {
     whitelist: [
-      'BTC', 'ETH', 'SOL', 'XRP', 'DOGE', 'BNB', 'LINK', 'LTC', 'ADA', 'AVAX',
-      'MATIC', 'DOT', 'ATOM', 'UNI', 'ARB',
-      'FLOW', 'ZIL', 'APE', 'NEAR', 'FTM', 'OP', 'INJ', 'SUI', 'TIA', 'SEI',
-      'AAVE', 'CRV', 'SNX', 'MKR', 'COMP', 'PEPE', 'WIF', 'BONK', 'FLOKI'
+      // Tier 1 - Major coins
+      'BTC', 'ETH', 'BNB', 'SOL', 'XRP', 'DOGE', 'ADA', 'AVAX', 'DOT', 'LINK',
+      'TRX', 'MATIC', 'SHIB', 'LTC', 'BCH', 'ATOM', 'UNI', 'XLM', 'ETC', 'FIL',
+      // Tier 2 - Large altcoins
+      'APT', 'ARB', 'OP', 'NEAR', 'INJ', 'SUI', 'SEI', 'TIA', 'JUP', 'STX',
+      'IMX', 'RENDER', 'FET', 'GRT', 'THETA', 'FTM', 'ALGO', 'VET', 'HBAR', 'ICP',
+      'SAND', 'MANA', 'AXS', 'GALA', 'ENJ', 'FLOW', 'CHZ', 'ROSE', 'ZIL', 'ENS',
+      // Tier 3 - DeFi
+      'AAVE', 'CRV', 'SNX', 'MKR', 'COMP', 'LDO', 'RPL', 'GMX', 'DYDX', 'SUSHI',
+      '1INCH', 'BAL', 'YFI', 'RUNE', 'PENDLE', 'JTO', 'EIGEN', 'ENA', 'ETHFI',
+      // Tier 4 - Meme (visok rizik ali visoke funding rate)
+      'PEPE', 'WIF', 'BONK', 'FLOKI', 'MEME', 'TURBO', 'NEIRO', 'PNUT', 'ACT',
+      // Tier 5 - Other popular
+      'APE', 'BLUR', 'ID', 'MASK', 'SSV', 'ARKM', 'WLD', 'PYTH', 'STRK', 'ZRO',
+      'W', 'ONDO', 'TAO', 'KAS', 'TON', 'NOT', 'DOGS', 'HMSTR', 'CATI', 'BOME',
+      'ORDI', 'SATS', 'RATS', '1000PEPE', '1000SHIB', '1000BONK', '1000FLOKI'
     ],
     blacklist: [],
   },
