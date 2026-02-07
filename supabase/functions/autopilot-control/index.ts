@@ -42,9 +42,14 @@ interface HedgeResult {
   error?: string;
 }
 
-function initializeExchanges(): ExchangeClients | null {
-  const binanceKey = Deno.env.get('BINANCE_API_KEY');
-  const binanceSecret = Deno.env.get('BINANCE_API_SECRET');
+function initializeExchanges(useSandbox: boolean = false): ExchangeClients | null {
+  // Use testnet keys for sandbox mode, mainnet keys for live
+  const binanceKey = useSandbox 
+    ? Deno.env.get('BINANCE_TESTNET_API_KEY') 
+    : Deno.env.get('BINANCE_API_KEY');
+  const binanceSecret = useSandbox 
+    ? Deno.env.get('BINANCE_TESTNET_API_SECRET') 
+    : Deno.env.get('BINANCE_API_SECRET');
   const okxKey = Deno.env.get('OKX_API_KEY');
   const okxSecret = Deno.env.get('OKX_API_SECRET');
   const okxPassphrase = Deno.env.get('OKX_PASSPHRASE');
@@ -59,22 +64,41 @@ function initializeExchanges(): ExchangeClients | null {
     options: { defaultType: 'future' },
   });
 
+  if (useSandbox) {
+    binance.setSandboxMode(true);
+  }
+
   const okx = new ccxt.okx({
     apiKey: okxKey,
     secret: okxSecret,
     password: okxPassphrase,
   });
 
-  const bybitKey = Deno.env.get('BYBIT_API_KEY') || binanceKey;
-  const bybitSecret = Deno.env.get('BYBIT_API_SECRET') || binanceSecret;
-  
-  const bybit = new ccxt.bybit({
-    apiKey: bybitKey,
-    secret: bybitSecret,
-    options: { defaultType: 'linear' },
-  });
+  if (useSandbox) {
+    okx.setSandboxMode(true);
+  }
 
-  return { binance, okx, bybit };
+  // Bybit - skip in sandbox mode unless it has dedicated testnet keys
+  const bybitTestnetKey = Deno.env.get('BYBIT_TESTNET_API_KEY');
+  const bybitTestnetSecret = Deno.env.get('BYBIT_TESTNET_API_SECRET');
+  const bybitKey = useSandbox ? bybitTestnetKey : (Deno.env.get('BYBIT_API_KEY') || binanceKey);
+  const bybitSecret = useSandbox ? bybitTestnetSecret : (Deno.env.get('BYBIT_API_SECRET') || binanceSecret);
+  
+  // Create bybit client only if we have valid keys (not null in sandbox mode)
+  let bybit: ccxt.bybit | null = null;
+  if (bybitKey && bybitSecret) {
+    bybit = new ccxt.bybit({
+      apiKey: bybitKey,
+      secret: bybitSecret,
+      options: { defaultType: 'linear' },
+    });
+
+    if (useSandbox) {
+      bybit.setSandboxMode(true);
+    }
+  }
+
+  return { binance, okx, bybit: bybit as ccxt.bybit };
 }
 
 function normalizeCcxtSymbol(symbol: string): string {
@@ -86,7 +110,7 @@ function getExchangeClient(exchanges: ExchangeClients, exchangeName: string): cc
   const name = exchangeName.toLowerCase();
   if (name.includes('binance')) return exchanges.binance;
   if (name.includes('okx') || name.includes('okex')) return exchanges.okx;
-  if (name.includes('bybit')) return exchanges.bybit;
+  if (name.includes('bybit')) return exchanges.bybit || null; // May be null in sandbox without testnet keys
   return null;
 }
 
@@ -310,16 +334,31 @@ Deno.serve(async (req) => {
       .eq("status", "open");
 
     const livePositions = (openPositions || []).filter(p => p.mode === 'live');
+    const paperPositions = (openPositions || []).filter(p => p.mode === 'paper');
     
-    // If LIVE positions exist, try to close on exchanges
+    // Close LIVE positions on mainnet exchanges
     if (livePositions.length > 0) {
-      const exchanges = initializeExchanges();
+      const exchanges = initializeExchanges(false); // mainnet
       if (exchanges) {
         for (const pos of livePositions) {
           try {
             await closeLiveHedge(exchanges, pos.symbol, pos.long_exchange, pos.short_exchange, pos.size_eur);
           } catch (e) {
             console.error(`Failed to close LIVE position ${pos.id}:`, e);
+          }
+        }
+      }
+    }
+
+    // Close PAPER positions on testnet exchanges
+    if (paperPositions.length > 0) {
+      const testnetExchanges = initializeExchanges(true); // testnet/sandbox
+      if (testnetExchanges) {
+        for (const pos of paperPositions) {
+          try {
+            await closeLiveHedge(testnetExchanges, pos.symbol, pos.long_exchange, pos.short_exchange, pos.size_eur);
+          } catch (e) {
+            console.error(`Failed to close PAPER position ${pos.id}:`, e);
           }
         }
       }
@@ -363,9 +402,10 @@ Deno.serve(async (req) => {
     let exitShortPrice = position.current_short_price;
     let liveCloseSuccess = false;
 
-    // Execute LIVE close if position is in live mode
-    if (position.mode === 'live') {
-      const exchanges = initializeExchanges();
+    // Execute exchange close based on position mode
+    if (position.mode === 'live' || position.mode === 'paper') {
+      const useSandbox = position.mode === 'paper';
+      const exchanges = initializeExchanges(useSandbox);
       
       if (exchanges) {
         const closeResult = await closeLiveHedge(
@@ -459,38 +499,45 @@ Deno.serve(async (req) => {
     let longOrderId: string | undefined;
     let shortOrderId: string | undefined;
 
-    if (mode === 'live') {
-      // LIVE MODE - Execute real trades
-      const exchanges = initializeExchanges();
+    if (mode === 'live' || mode === 'paper') {
+      const useSandbox = mode === 'paper';
+      const exchanges = initializeExchanges(useSandbox);
       
       if (!exchanges) {
-        return json({ error: "API keys not configured for LIVE trading" }, 500);
+        if (mode === 'live') {
+          return json({ error: "API keys not configured for LIVE trading" }, 500);
+        }
+        // Paper mode without testnet keys - use mock prices
+        const mockPrice = 50000 + Math.random() * 1000;
+        const spreadPercent = payload.spread_bps / 100 / 100;
+        entryLongPrice = mockPrice;
+        entryShortPrice = mockPrice * (1 + spreadPercent * 0.1);
+      } else {
+        // Execute real trades (mainnet or testnet)
+        const hedgeResult = await executeLiveHedge(
+          exchanges,
+          payload.symbol,
+          payload.long_exchange,
+          payload.short_exchange,
+          hedgeSize
+        );
+
+        if (!hedgeResult.success) {
+          await admin.from('autopilot_audit_log').insert({
+            action: mode === 'live' ? 'MANUAL_LIVE_FAILED' : 'MANUAL_TESTNET_FAILED',
+            level: 'error',
+            details: { symbol: payload.symbol, error: hedgeResult.error },
+          });
+          return json({ error: hedgeResult.error }, 500);
+        }
+
+        entryLongPrice = hedgeResult.longPrice;
+        entryShortPrice = hedgeResult.shortPrice;
+        longOrderId = hedgeResult.longOrderId;
+        shortOrderId = hedgeResult.shortOrderId;
       }
-
-      const hedgeResult = await executeLiveHedge(
-        exchanges,
-        payload.symbol,
-        payload.long_exchange,
-        payload.short_exchange,
-        hedgeSize
-      );
-
-      if (!hedgeResult.success) {
-        await admin.from('autopilot_audit_log').insert({
-          action: 'MANUAL_LIVE_FAILED',
-          level: 'error',
-          details: { symbol: payload.symbol, error: hedgeResult.error },
-        });
-        return json({ error: hedgeResult.error }, 500);
-      }
-
-      entryLongPrice = hedgeResult.longPrice;
-      entryShortPrice = hedgeResult.shortPrice;
-      longOrderId = hedgeResult.longOrderId;
-      shortOrderId = hedgeResult.shortOrderId;
-
     } else {
-      // PAPER MODE - Mock prices
+      // OFF mode - shouldn't reach here but fallback to mock
       const mockPrice = 50000 + Math.random() * 1000;
       const spreadPercent = payload.spread_bps / 100 / 100;
       entryLongPrice = mockPrice;
