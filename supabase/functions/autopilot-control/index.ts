@@ -42,19 +42,22 @@ interface HedgeResult {
 }
 
 function initializeExchanges(useSandbox: boolean = false): ExchangeClients | null {
-  // Use testnet keys for sandbox mode, mainnet keys for live
-  const binanceKey = useSandbox 
-    ? Deno.env.get('BINANCE_TESTNET_API_KEY') 
-    : Deno.env.get('BINANCE_API_KEY');
-  const binanceSecret = useSandbox 
-    ? Deno.env.get('BINANCE_TESTNET_API_SECRET') 
-    : Deno.env.get('BINANCE_API_SECRET');
+  // IMPORTANT: Binance futures testnet is DEPRECATED (see CCXT announcement)
+  // For PAPER mode, we use mainnet keys but DON'T execute real trades (simulation only)
+  // For LIVE mode, we use mainnet keys and execute real trades
+  
+  const binanceKey = Deno.env.get('BINANCE_API_KEY');
+  const binanceSecret = Deno.env.get('BINANCE_API_SECRET');
   const okxKey = Deno.env.get('OKX_API_KEY');
   const okxSecret = Deno.env.get('OKX_API_SECRET');
   const okxPassphrase = Deno.env.get('OKX_PASSPHRASE');
 
   // Check minimum required keys (Binance + OKX only)
   if (!binanceKey || !binanceSecret || !okxKey || !okxSecret || !okxPassphrase) {
+    console.log('[autopilot-control] Missing API keys:', {
+      binance: !!binanceKey && !!binanceSecret,
+      okx: !!okxKey && !!okxSecret && !!okxPassphrase,
+    });
     return null;
   }
 
@@ -63,21 +66,16 @@ function initializeExchanges(useSandbox: boolean = false): ExchangeClients | nul
     secret: binanceSecret,
     options: { defaultType: 'future' },
   });
-
-  if (useSandbox) {
-    binance.setSandboxMode(true);
-  }
+  // DO NOT use sandbox mode - Binance futures testnet is deprecated
 
   const okx = new ccxt.okx({
     apiKey: okxKey,
     secret: okxSecret,
     password: okxPassphrase,
   });
+  // DO NOT use sandbox mode for OKX either - use mainnet demo trading if needed
 
-  if (useSandbox) {
-    okx.setSandboxMode(true);
-  }
-
+  console.log(`[autopilot-control] Exchanges initialized (sandbox param: ${useSandbox}, actual: mainnet)`);
   return { binance, okx };
 }
 
@@ -497,43 +495,66 @@ Deno.serve(async (req) => {
     let longOrderId: string | undefined;
     let shortOrderId: string | undefined;
 
-    if (mode === 'live' || mode === 'paper') {
-      const useSandbox = mode === 'paper';
-      const exchanges = initializeExchanges(useSandbox);
+    if (mode === 'live') {
+      // LIVE mode - execute real trades on mainnet
+      const exchanges = initializeExchanges(false);
       
       if (!exchanges) {
-        if (mode === 'live') {
-          return json({ error: "API keys not configured for LIVE trading" }, 500);
+        return json({ error: "API keys not configured for LIVE trading" }, 500);
+      }
+      
+      const hedgeResult = await executeLiveHedge(
+        exchanges,
+        payload.symbol,
+        payload.long_exchange,
+        payload.short_exchange,
+        hedgeSize
+      );
+
+      if (!hedgeResult.success) {
+        await admin.from('autopilot_audit_log').insert({
+          action: 'MANUAL_LIVE_FAILED',
+          level: 'error',
+          details: { symbol: payload.symbol, error: hedgeResult.error },
+        });
+        return json({ error: hedgeResult.error }, 500);
+      }
+
+      entryLongPrice = hedgeResult.longPrice;
+      entryShortPrice = hedgeResult.shortPrice;
+      longOrderId = hedgeResult.longOrderId;
+      shortOrderId = hedgeResult.shortOrderId;
+      
+    } else if (mode === 'paper') {
+      // PAPER mode - simulate with real prices but NO actual trades
+      // (Binance futures testnet is deprecated, OKX demo requires separate setup)
+      const exchanges = initializeExchanges(false);
+      
+      if (exchanges) {
+        // Fetch real price for realistic simulation
+        try {
+          const ccxtSymbol = normalizeCcxtSymbol(payload.symbol);
+          const ticker = await exchanges.binance.fetchTicker(ccxtSymbol);
+          const realPrice = ticker.last || 50000;
+          const spreadPercent = payload.spread_bps / 100 / 100;
+          entryLongPrice = realPrice;
+          entryShortPrice = realPrice * (1 + spreadPercent * 0.1);
+          console.log(`[autopilot-control] PAPER: Simulated entry at ${realPrice}`);
+        } catch (priceError) {
+          console.log(`[autopilot-control] PAPER: Price fetch failed, using mock`);
+          const mockPrice = 50000 + Math.random() * 1000;
+          const spreadPercent = payload.spread_bps / 100 / 100;
+          entryLongPrice = mockPrice;
+          entryShortPrice = mockPrice * (1 + spreadPercent * 0.1);
         }
-        // Paper mode without testnet keys - use mock prices
+      } else {
+        // No keys at all - use mock prices
         const mockPrice = 50000 + Math.random() * 1000;
         const spreadPercent = payload.spread_bps / 100 / 100;
         entryLongPrice = mockPrice;
         entryShortPrice = mockPrice * (1 + spreadPercent * 0.1);
-      } else {
-        // Execute real trades (mainnet or testnet)
-        const hedgeResult = await executeLiveHedge(
-          exchanges,
-          payload.symbol,
-          payload.long_exchange,
-          payload.short_exchange,
-          hedgeSize
-        );
-
-        if (!hedgeResult.success) {
-          await admin.from('autopilot_audit_log').insert({
-            action: mode === 'live' ? 'MANUAL_LIVE_FAILED' : 'MANUAL_TESTNET_FAILED',
-            level: 'error',
-            details: { symbol: payload.symbol, error: hedgeResult.error },
-          });
-          return json({ error: hedgeResult.error }, 500);
-        }
-
-        entryLongPrice = hedgeResult.longPrice;
-        entryShortPrice = hedgeResult.shortPrice;
-        longOrderId = hedgeResult.longOrderId;
-        shortOrderId = hedgeResult.shortOrderId;
       }
+      
     } else {
       // OFF mode - shouldn't reach here but fallback to mock
       const mockPrice = 50000 + Math.random() * 1000;
