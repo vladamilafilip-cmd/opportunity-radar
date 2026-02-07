@@ -119,54 +119,63 @@ Deno.serve(async (req) => {
       });
     }
 
-    // 4. Find best opportunity from allowed exchanges
-    // NOTE: We intentionally fetch a wider set and sort by net edge, because
-    // Binance/OKX/Bybit opportunities may not always be in the top by score.
+    // 4. Get exchange IDs for Binance, OKX, Bybit (SQL-level filtering)
+    const { data: exchanges, error: exError } = await supabase
+      .from('exchanges')
+      .select('id, code, name')
+      .or('code.ilike.%binance%,code.ilike.%okx%,code.ilike.%okex%,code.ilike.%bybit%');
+
+    if (exError) throw exError;
+
+    const exchangeIds = (exchanges || []).map(e => e.id);
+    const exchangeMap = new Map((exchanges || []).map(e => [e.id, e]));
+    
+    log(`Found ${exchangeIds.length} allowed exchanges: ${(exchanges || []).map(e => e.code).join(', ')}`);
+
+    if (exchangeIds.length === 0) {
+      log('No allowed exchanges found in DB');
+      await updateLastScan(supabase);
+      return new Response(JSON.stringify({ ok: true, skipped: 'no_exchanges' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // 5. Find opportunities ONLY from allowed exchanges (SQL-level filter)
     const { data: opportunities, error: oppError } = await supabase
       .from('arbitrage_opportunities')
       .select(`
         id,
         symbol_id,
+        long_exchange_id,
+        short_exchange_id,
         net_edge_8h_bps,
         opportunity_score,
         risk_tier,
-        symbols:symbol_id (display_name, base_asset),
-        long_exchange:long_exchange_id (code, name),
-        short_exchange:short_exchange_id (code, name)
+        symbols:symbol_id (display_name, base_asset)
       `)
       .eq('status', 'active')
-      .gte('net_edge_8h_bps', 1) // Ultra aggressive: 1 bps minimum
+      .in('long_exchange_id', exchangeIds)
+      .in('short_exchange_id', exchangeIds)
+      .gte('net_edge_8h_bps', 1)
       .order('net_edge_8h_bps', { ascending: false })
-      .limit(500);
+      .limit(50);
 
     if (oppError) throw oppError;
 
-    // Debug: log first few exchange codes to see what we're getting
-    const sampleExchanges = (opportunities || []).slice(0, 5).map(o => ({
-      long: (o.long_exchange as any)?.code,
-      short: (o.short_exchange as any)?.code,
+    // Filter out same-exchange pairs (can't arbitrage same exchange)
+    const validOpps = (opportunities || []).filter(opp => 
+      opp.long_exchange_id !== opp.short_exchange_id
+    );
+
+    // Log found opportunities
+    const topOpps = validOpps.slice(0, 5).map(o => ({
+      symbol: (o.symbols as any)?.display_name,
+      long: exchangeMap.get(o.long_exchange_id)?.code,
+      short: exchangeMap.get(o.short_exchange_id)?.code,
+      bps: o.net_edge_8h_bps,
     }));
-    log(`Sample exchanges: ${JSON.stringify(sampleExchanges)}`);
-
-    // Filter for allowed exchanges (Binance, OKX, Bybit) with flexible matching
-    const validOpps = (opportunities || []).filter(opp => {
-      const longEx = (opp.long_exchange as any)?.code || '';
-      const shortEx = (opp.short_exchange as any)?.code || '';
-      const riskTier = opp.risk_tier || 'medium';
-      
-      // Must match allowed exchanges (flexible matching)
-      if (!matchExchange(longEx) || !matchExchange(shortEx)) {
-        return false;
-      }
-      // Must be different exchanges
-      if (longEx.toLowerCase() === shortEx.toLowerCase()) return false;
-      // Allow all risk tiers for aggressive mode
-      // if (riskTier === 'high') return false;
-      
-      return true;
-    });
-
-    log(`Found ${opportunities?.length || 0} total, ${validOpps.length} valid for Binance/OKX/Bybit`);
+    log(`Top opportunities: ${JSON.stringify(topOpps)}`);
+    log(`Found ${validOpps.length} valid Binance/OKX/Bybit opportunities`);
 
     if (validOpps.length === 0) {
       log('No valid opportunities found');
@@ -179,8 +188,10 @@ Deno.serve(async (req) => {
     // Get best opportunity
     const best = validOpps[0];
     const symbol = (best.symbols as any)?.display_name || 'Unknown';
-    const longEx = (best.long_exchange as any)?.name || 'Binance';
-    const shortEx = (best.short_exchange as any)?.name || 'OKX';
+    const longExData = exchangeMap.get(best.long_exchange_id);
+    const shortExData = exchangeMap.get(best.short_exchange_id);
+    const longEx = longExData?.name || 'Binance';
+    const shortEx = shortExData?.name || 'OKX';
     const spreadBps = best.net_edge_8h_bps || 0;
 
     log(`Best opportunity: ${symbol} L:${longEx} S:${shortEx} spread:${spreadBps}bps`);
