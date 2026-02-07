@@ -206,6 +206,7 @@ export interface AutopilotStoreState {
   // Stats
   todayPnl: number;
   weeklyPnl: number;
+  unrealizedPnl: number;
   
   // Loading states
   isLoading: boolean;
