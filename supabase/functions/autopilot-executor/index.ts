@@ -29,15 +29,6 @@ const DEFAULT_CONFIG: AutopilotConfig = {
   risk: { maxConcurrentHedges: 8, maxDailyDrawdownEur: 50 },
 };
 
-// Allowed exchanges for trading (multiple variants for matching)
-const ALLOWED_EXCHANGES = ['binance', 'okx', 'bybit', 'binanceusdm', 'binancecoinm', 'okex'];
-
-function matchExchange(code: string): boolean {
-  if (!code) return false;
-  const lower = code.toLowerCase();
-  return lower.includes('binance') || lower.includes('okx') || lower.includes('okex') || lower.includes('bybit');
-}
-
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -52,6 +43,9 @@ Deno.serve(async (req) => {
     console.log(`[autopilot-executor] ${msg}`);
     logs.push(msg);
   };
+
+  // Track insert payload for error diagnostics
+  let insertPayload: Record<string, unknown> = {};
 
   try {
     log('Starting scan cycle...');
@@ -173,6 +167,7 @@ Deno.serve(async (req) => {
       long: exchangeMap.get(o.long_exchange_id)?.code,
       short: exchangeMap.get(o.short_exchange_id)?.code,
       bps: o.net_edge_8h_bps,
+      score: o.opportunity_score,
     }));
     log(`Top opportunities: ${JSON.stringify(topOpps)}`);
     log(`Found ${validOpps.length} valid Binance/OKX/Bybit opportunities`);
@@ -192,9 +187,11 @@ Deno.serve(async (req) => {
     const shortExData = exchangeMap.get(best.short_exchange_id);
     const longEx = longExData?.name || 'Binance';
     const shortEx = shortExData?.name || 'OKX';
-    const spreadBps = best.net_edge_8h_bps || 0;
+    const spreadBps = Number(best.net_edge_8h_bps) || 0;
+    const rawScore = best.opportunity_score;
+    const entryScore = Math.round(Number(rawScore ?? 80));
 
-    log(`Best opportunity: ${symbol} L:${longEx} S:${shortEx} spread:${spreadBps}bps`);
+    log(`Best opportunity: ${symbol} L:${longEx} S:${shortEx} spread:${spreadBps}bps score:${rawScore}->${entryScore}`);
 
     // Check minimum profit threshold
     if (spreadBps < config.thresholds.safe.minProfitBps) {
@@ -205,7 +202,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    // 5. Check if we already have position on this symbol
+    // 6. Check if we already have position on this symbol
     const { data: existingPos } = await supabase
       .from('autopilot_positions')
       .select('id')
@@ -221,23 +218,27 @@ Deno.serve(async (req) => {
       });
     }
 
-    // 6. Open new position (paper mode - mock prices)
+    // 7. Open new position (paper mode - mock prices)
     const mockPrice = symbol.includes('BTC') ? 95000 : 
                       symbol.includes('ETH') ? 3400 : 
                       symbol.includes('SOL') ? 180 : 100;
 
     const hedgeId = crypto.randomUUID();
-    const positionData = {
+    
+    // Build position data with correct types:
+    // - entry_score: integer (must round decimal)
+    // - entry_funding_spread_8h: numeric in BPS (UI expects bps)
+    insertPayload = {
       hedge_id: hedgeId,
       symbol,
       long_exchange: longEx,
       short_exchange: shortEx,
-      risk_tier: best.risk_tier || 'safe',
+      risk_tier: String(best.risk_tier || 'safe'),
       size_eur: config.capital.hedgeSizeEur,
       entry_long_price: mockPrice,
       entry_short_price: mockPrice * 1.0001,
-      entry_funding_spread_8h: spreadBps / 10000,
-      entry_score: best.opportunity_score || 80,
+      entry_funding_spread_8h: spreadBps, // Store as BPS (e.g., 14.78)
+      entry_score: entryScore, // Rounded integer
       mode,
       status: 'open',
       leverage: 1,
@@ -245,18 +246,19 @@ Deno.serve(async (req) => {
       unrealized_pnl_percent: 0,
       funding_collected_eur: 0,
       intervals_collected: 0,
+      pnl_drift: 0,
       risk_snapshot: { deployed: deployedEur + config.capital.hedgeSizeEur },
     };
 
     const { error: insertError } = await supabase
       .from('autopilot_positions')
-      .insert(positionData);
+      .insert(insertPayload);
 
     if (insertError) throw insertError;
 
-    log(`Opened position: ${symbol} €${config.capital.hedgeSizeEur}`);
+    log(`Opened position: ${symbol} €${config.capital.hedgeSizeEur} @ ${spreadBps}bps`);
 
-    // 7. Log to audit
+    // 8. Log to audit
     await supabase.from('autopilot_audit_log').insert({
       action: `AUTO_ENTRY: ${symbol}`,
       level: 'action',
@@ -268,11 +270,12 @@ Deno.serve(async (req) => {
         shortExchange: shortEx,
         sizeEur: config.capital.hedgeSizeEur,
         spreadBps,
+        entryScore,
         mode,
       },
     });
 
-    // 8. Update last scan timestamp
+    // 9. Update last scan timestamp
     await updateLastScan(supabase);
 
     return new Response(JSON.stringify({
@@ -280,6 +283,7 @@ Deno.serve(async (req) => {
       action: 'opened_position',
       symbol,
       spreadBps,
+      entryScore,
       logs,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -288,7 +292,7 @@ Deno.serve(async (req) => {
   } catch (error: any) {
     console.error('[autopilot-executor] Error:', error);
     
-    // Log error to audit
+    // Log error to audit with diagnostic payload
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, serviceRoleKey);
@@ -296,7 +300,11 @@ Deno.serve(async (req) => {
     await supabase.from('autopilot_audit_log').insert({
       action: 'EXECUTOR_ERROR',
       level: 'error',
-      details: { error: error.message, logs },
+      details: { 
+        error: error.message, 
+        insertPayload: Object.keys(insertPayload).length > 0 ? insertPayload : undefined,
+        logs,
+      },
     });
 
     return new Response(JSON.stringify({ 
