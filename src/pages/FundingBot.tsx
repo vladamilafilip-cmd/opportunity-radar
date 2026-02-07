@@ -36,6 +36,7 @@ export default function FundingBot() {
     auditLogs,
     todayPnl,
     riskBudget,
+    unrealizedPnl,
     fetchState,
     fetchPositions,
     fetchAuditLogs,
@@ -207,6 +208,7 @@ export default function FundingBot() {
           todayPnl={todayPnl}
           totalPnl={totalRealizedPnl}
           fundingCollected={totalFundingCollected}
+          unrealizedPnl={unrealizedPnl}
         />
 
         {/* Control Buttons */}

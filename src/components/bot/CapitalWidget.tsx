@@ -10,20 +10,22 @@ interface CapitalWidgetProps {
   todayPnl: number;
   totalPnl: number;
   fundingCollected: number;
+  unrealizedPnl: number;
 }
 
 export function CapitalWidget({ 
   deployedEur, 
   todayPnl, 
   totalPnl,
-  fundingCollected 
+  fundingCollected,
+  unrealizedPnl 
 }: CapitalWidgetProps) {
-  const { totalUsd, totalEur, maxDeployedEur, bufferEur } = autopilotConfig.capital;
+  const { totalUsd, totalEur, maxDeployedEur } = autopilotConfig.capital;
   const deployedPercent = (deployedEur / maxDeployedEur) * 100;
   const todayRoi = totalEur > 0 ? (todayPnl / totalEur) * 100 : 0;
 
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+    <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
       {/* Capital Status */}
       <Card className="bg-card/50">
         <CardContent className="p-4">
@@ -82,6 +84,29 @@ export function CapitalWidget({
           </div>
           <div className="text-xs text-muted-foreground mt-1">
             All time realized
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Unrealized PnL */}
+      <Card className="bg-card/50">
+        <CardContent className="p-4">
+          <div className="flex items-center gap-2 text-muted-foreground text-xs mb-2">
+            {unrealizedPnl >= 0 ? (
+              <TrendingUp className="h-3.5 w-3.5 text-primary" />
+            ) : (
+              <TrendingDown className="h-3.5 w-3.5 text-destructive" />
+            )}
+            UNREALIZED
+          </div>
+          <div className={cn(
+            "text-2xl font-mono font-bold",
+            unrealizedPnl >= 0 ? "text-primary" : "text-destructive"
+          )}>
+            {unrealizedPnl >= 0 ? '+' : ''}€{unrealizedPnl.toFixed(2)}
+          </div>
+          <div className="text-xs text-muted-foreground mt-1">
+            Open positions
           </div>
         </CardContent>
       </Card>

@@ -118,12 +118,60 @@ function calculateExchangeBalances(positions: AutopilotPosition[]): ExchangeBala
   });
 }
 
+// Simulate PnL based on time elapsed and entry spread (for TEST mode)
+function simulatePnl(position: AutopilotPosition): { unrealizedPnl: number; fundingCollected: number; intervals: number } {
+  const hoursOpen = (Date.now() - new Date(position.entry_ts).getTime()) / (1000 * 60 * 60);
+  const intervalsComplete = Math.floor(hoursOpen / 8);
+  
+  // Funding per 8h interval = size * spread% (already in bps, need to convert)
+  const spreadPercent = position.entry_funding_spread_8h / 100; // Convert bps to percent
+  const fundingPerInterval = position.size_eur * (spreadPercent / 100); // Convert percent to decimal
+  
+  // Gross funding collected
+  const grossFunding = intervalsComplete * fundingPerInterval;
+  
+  // Costs: ~8 bps per interval (fees + slippage)
+  const costsPerInterval = position.size_eur * 0.0008;
+  const totalCosts = intervalsComplete * costsPerInterval;
+  
+  // Net unrealized PnL
+  const unrealizedPnl = grossFunding - totalCosts;
+  
+  return {
+    unrealizedPnl,
+    fundingCollected: grossFunding,
+    intervals: intervalsComplete,
+  };
+}
+
+// Apply simulated PnL to positions
+function applySimulatedPnl(positions: AutopilotPosition[]): AutopilotPosition[] {
+  return positions.map(p => {
+    if (p.status !== 'open') return p;
+    
+    const simulated = simulatePnl(p);
+    return {
+      ...p,
+      unrealized_pnl_eur: simulated.unrealizedPnl,
+      funding_collected_eur: simulated.fundingCollected,
+      intervals_collected: simulated.intervals,
+      unrealized_pnl_percent: p.size_eur > 0 ? (simulated.unrealizedPnl / p.size_eur) * 100 : 0,
+    };
+  });
+}
+
 function calculateTodayPnl(positions: AutopilotPosition[]): number {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   
   return positions
     .filter(p => new Date(p.entry_ts) >= today)
+    .reduce((sum, p) => sum + p.unrealized_pnl_eur, 0);
+}
+
+function calculateUnrealizedPnl(positions: AutopilotPosition[]): number {
+  return positions
+    .filter(p => p.status === 'open')
     .reduce((sum, p) => sum + p.unrealized_pnl_eur, 0);
 }
 
@@ -161,6 +209,7 @@ export const useAutopilotStore = create<AutopilotStore>((set, get) => ({
   riskLevel: 'normal' as RiskLevel,
   todayPnl: 0,
   weeklyPnl: 0,
+  unrealizedPnl: 0,
   isLoading: false,
   error: null,
 
@@ -209,12 +258,15 @@ export const useAutopilotStore = create<AutopilotStore>((set, get) => ({
       
       if (error) throw error;
       
-      const positions = (data || []) as unknown as AutopilotPosition[];
+      const rawPositions = (data || []) as unknown as AutopilotPosition[];
+      // Apply simulated PnL for open positions
+      const positions = applySimulatedPnl(rawPositions);
       const bucketAllocation = calculateBucketAllocation(positions);
       const riskBudget = calculateRiskBudget(positions, get().dailyDrawdown);
       const exchangeBalances = calculateExchangeBalances(positions);
       const todayPnl = calculateTodayPnl(positions);
       const weeklyPnl = calculateWeeklyPnl(positions);
+      const unrealizedPnl = calculateUnrealizedPnl(positions);
       
       set({ 
         positions, 
@@ -223,6 +275,7 @@ export const useAutopilotStore = create<AutopilotStore>((set, get) => ({
         exchangeBalances,
         todayPnl,
         weeklyPnl,
+        unrealizedPnl,
       });
     } catch (error) {
       set({ error: String(error) });
