@@ -37,17 +37,6 @@ export const exchangeConfigs: ExchangeConfig[] = [
     testnetAvailable: true,
   },
   {
-    code: 'bybit',
-    name: 'Bybit',
-    allocation: 30,
-    purpose: 'both',
-    fundingInterval: 8,
-    takerFeeBps: 5.5,
-    makerFeeBps: 2,
-    apiSupported: true,
-    testnetAvailable: true,
-  },
-  {
     code: 'okx',
     name: 'OKX',
     allocation: 30,
