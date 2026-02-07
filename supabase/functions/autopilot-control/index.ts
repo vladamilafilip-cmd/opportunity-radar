@@ -1,7 +1,8 @@
 // supabase/functions/autopilot-control/index.ts
-// Minimal control plane for the one-page /bot UI.
+// Control plane for the one-page /bot UI - Supports LIVE and PAPER trading
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import ccxt from 'npm:ccxt';
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -23,6 +24,172 @@ function json(data: unknown, status = 200) {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 }
+
+// ============= CCXT Exchange Integration =============
+
+interface ExchangeClients {
+  binance: ccxt.binance;
+  okx: ccxt.okx;
+  bybit: ccxt.bybit;
+}
+
+interface HedgeResult {
+  success: boolean;
+  longPrice: number;
+  shortPrice: number;
+  longOrderId?: string;
+  shortOrderId?: string;
+  error?: string;
+}
+
+function initializeExchanges(): ExchangeClients | null {
+  const binanceKey = Deno.env.get('BINANCE_API_KEY');
+  const binanceSecret = Deno.env.get('BINANCE_API_SECRET');
+  const okxKey = Deno.env.get('OKX_API_KEY');
+  const okxSecret = Deno.env.get('OKX_API_SECRET');
+  const okxPassphrase = Deno.env.get('OKX_PASSPHRASE');
+
+  if (!binanceKey || !binanceSecret || !okxKey || !okxSecret || !okxPassphrase) {
+    return null;
+  }
+
+  const binance = new ccxt.binance({
+    apiKey: binanceKey,
+    secret: binanceSecret,
+    options: { defaultType: 'future' },
+  });
+
+  const okx = new ccxt.okx({
+    apiKey: okxKey,
+    secret: okxSecret,
+    password: okxPassphrase,
+  });
+
+  const bybitKey = Deno.env.get('BYBIT_API_KEY') || binanceKey;
+  const bybitSecret = Deno.env.get('BYBIT_API_SECRET') || binanceSecret;
+  
+  const bybit = new ccxt.bybit({
+    apiKey: bybitKey,
+    secret: bybitSecret,
+    options: { defaultType: 'linear' },
+  });
+
+  return { binance, okx, bybit };
+}
+
+function normalizeCcxtSymbol(symbol: string): string {
+  const cleaned = symbol.replace('/USDT', '').replace('USDT', '').replace('-', '');
+  return `${cleaned}/USDT:USDT`;
+}
+
+function getExchangeClient(exchanges: ExchangeClients, exchangeName: string): ccxt.Exchange | null {
+  const name = exchangeName.toLowerCase();
+  if (name.includes('binance')) return exchanges.binance;
+  if (name.includes('okx') || name.includes('okex')) return exchanges.okx;
+  if (name.includes('bybit')) return exchanges.bybit;
+  return null;
+}
+
+async function executeLiveHedge(
+  exchanges: ExchangeClients,
+  symbol: string,
+  longExchange: string,
+  shortExchange: string,
+  sizeEur: number
+): Promise<HedgeResult> {
+  try {
+    const longEx = getExchangeClient(exchanges, longExchange);
+    const shortEx = getExchangeClient(exchanges, shortExchange);
+
+    if (!longEx || !shortEx) {
+      return { success: false, longPrice: 0, shortPrice: 0, error: `Exchange not found` };
+    }
+
+    const ccxtSymbol = normalizeCcxtSymbol(symbol);
+    const ticker = await longEx.fetchTicker(ccxtSymbol);
+    const price = ticker.last || 0;
+    
+    if (price === 0) {
+      return { success: false, longPrice: 0, shortPrice: 0, error: 'Could not fetch price' };
+    }
+
+    const size = sizeEur / price;
+
+    const [longOrder, shortOrder] = await Promise.allSettled([
+      longEx.createMarketOrder(ccxtSymbol, 'buy', size),
+      shortEx.createMarketOrder(ccxtSymbol, 'sell', size),
+    ]);
+
+    if (longOrder.status === 'fulfilled' && shortOrder.status === 'fulfilled') {
+      return {
+        success: true,
+        longPrice: longOrder.value.average || price,
+        shortPrice: shortOrder.value.average || price,
+        longOrderId: longOrder.value.id,
+        shortOrderId: shortOrder.value.id,
+      };
+    }
+
+    // Atomic rollback on partial failure
+    if (longOrder.status === 'fulfilled' && shortOrder.status === 'rejected') {
+      try { await longEx.createMarketOrder(ccxtSymbol, 'sell', size); } catch {}
+      return { success: false, longPrice: 0, shortPrice: 0, error: `Short leg failed: ${shortOrder.reason}` };
+    }
+
+    if (shortOrder.status === 'fulfilled' && longOrder.status === 'rejected') {
+      try { await shortEx.createMarketOrder(ccxtSymbol, 'buy', size); } catch {}
+      return { success: false, longPrice: 0, shortPrice: 0, error: `Long leg failed: ${longOrder.reason}` };
+    }
+
+    return { success: false, longPrice: 0, shortPrice: 0, error: 'Both legs failed' };
+  } catch (error) {
+    return { success: false, longPrice: 0, shortPrice: 0, error: String(error) };
+  }
+}
+
+async function closeLiveHedge(
+  exchanges: ExchangeClients,
+  symbol: string,
+  longExchange: string,
+  shortExchange: string,
+  sizeEur: number
+): Promise<HedgeResult> {
+  try {
+    const longEx = getExchangeClient(exchanges, longExchange);
+    const shortEx = getExchangeClient(exchanges, shortExchange);
+
+    if (!longEx || !shortEx) {
+      return { success: false, longPrice: 0, shortPrice: 0, error: 'Exchange not found' };
+    }
+
+    const ccxtSymbol = normalizeCcxtSymbol(symbol);
+    const ticker = await longEx.fetchTicker(ccxtSymbol);
+    const price = ticker.last || 0;
+    const size = sizeEur / price;
+
+    // Reverse: SELL long leg, BUY short leg
+    const [closeLong, closeShort] = await Promise.allSettled([
+      longEx.createMarketOrder(ccxtSymbol, 'sell', size),
+      shortEx.createMarketOrder(ccxtSymbol, 'buy', size),
+    ]);
+
+    const longPrice = closeLong.status === 'fulfilled' ? (closeLong.value.average || price) : price;
+    const shortPrice = closeShort.status === 'fulfilled' ? (closeShort.value.average || price) : price;
+
+    return {
+      success: closeLong.status === 'fulfilled' && closeShort.status === 'fulfilled',
+      longPrice,
+      shortPrice,
+      error: closeLong.status === 'rejected' || closeShort.status === 'rejected' 
+        ? 'One or both close orders failed' 
+        : undefined,
+    };
+  } catch (error) {
+    return { success: false, longPrice: 0, shortPrice: 0, error: String(error) };
+  }
+}
+
+// ============= Main Handler =============
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -48,18 +215,19 @@ Deno.serve(async (req) => {
     return json({ error: "Invalid JSON body" }, 400);
   }
 
-  // Autopilot state is expected to be a single-row table.
   const { data: stateRow, error: stateErr } = await admin
     .from("autopilot_state")
-    .select("id")
+    .select("id, mode, kill_switch_active")
     .limit(1)
     .maybeSingle();
 
   if (stateErr) return json({ error: stateErr.message }, 500);
 
   const stateId = stateRow?.id as string | undefined;
+  const currentMode = stateRow?.mode || 'paper';
   const nowIso = new Date().toISOString();
 
+  // ============= SET MODE =============
   if (payload.action === "set_mode") {
     if (!stateId) {
       const { error } = await admin
@@ -74,6 +242,13 @@ Deno.serve(async (req) => {
       if (error) return json({ error: error.message }, 500);
     }
 
+    // Log mode change
+    await admin.from('autopilot_audit_log').insert({
+      action: `MODE_CHANGE: ${payload.mode.toUpperCase()}`,
+      level: 'action',
+      details: { from: currentMode, to: payload.mode },
+    });
+
     return json({ ok: true, mode: payload.mode });
   }
 
@@ -81,6 +256,7 @@ Deno.serve(async (req) => {
     return json({ error: "autopilot_state not initialized" }, 400);
   }
 
+  // ============= SET RUNNING =============
   if (payload.action === "set_running") {
     const { error } = await admin
       .from("autopilot_state")
@@ -88,9 +264,16 @@ Deno.serve(async (req) => {
       .eq("id", stateId);
     if (error) return json({ error: error.message }, 500);
 
+    await admin.from('autopilot_audit_log').insert({
+      action: payload.is_running ? 'BOT_STARTED' : 'BOT_STOPPED',
+      level: 'action',
+      details: { mode: currentMode },
+    });
+
     return json({ ok: true, is_running: payload.is_running });
   }
 
+  // ============= RESET KILL SWITCH =============
   if (payload.action === "reset_kill_switch") {
     const { error } = await admin
       .from("autopilot_state")
@@ -103,18 +286,45 @@ Deno.serve(async (req) => {
       .eq("id", stateId);
     if (error) return json({ error: error.message }, 500);
 
+    await admin.from('autopilot_audit_log').insert({
+      action: 'KILL_SWITCH_RESET',
+      level: 'action',
+      details: {},
+    });
+
     return json({ ok: true });
   }
 
+  // ============= STOP ALL =============
   if (payload.action === "stop_all") {
-    // 1) stop running
     const { error: stopErr } = await admin
       .from("autopilot_state")
       .update({ is_running: false, updated_at: nowIso })
       .eq("id", stateId);
     if (stopErr) return json({ error: stopErr.message }, 500);
 
-    // 2) mark open positions as stopped
+    // Get open LIVE positions for potential exchange close
+    const { data: openPositions } = await admin
+      .from("autopilot_positions")
+      .select("*")
+      .eq("status", "open");
+
+    const livePositions = (openPositions || []).filter(p => p.mode === 'live');
+    
+    // If LIVE positions exist, try to close on exchanges
+    if (livePositions.length > 0) {
+      const exchanges = initializeExchanges();
+      if (exchanges) {
+        for (const pos of livePositions) {
+          try {
+            await closeLiveHedge(exchanges, pos.symbol, pos.long_exchange, pos.short_exchange, pos.size_eur);
+          } catch (e) {
+            console.error(`Failed to close LIVE position ${pos.id}:`, e);
+          }
+        }
+      }
+    }
+
     const { error: posErr } = await admin
       .from("autopilot_positions")
       .update({
@@ -127,38 +337,110 @@ Deno.serve(async (req) => {
 
     if (posErr) return json({ error: posErr.message }, 500);
 
+    await admin.from('autopilot_audit_log').insert({
+      action: 'STOP_ALL',
+      level: 'action',
+      details: { closedCount: openPositions?.length || 0, liveClosedCount: livePositions.length },
+    });
+
     return json({ ok: true });
   }
 
+  // ============= CLOSE POSITION =============
   if (payload.action === "close_position") {
+    // Fetch position details first
+    const { data: position, error: posError } = await admin
+      .from("autopilot_positions")
+      .select("*")
+      .eq("id", payload.position_id)
+      .single();
+
+    if (posError || !position) {
+      return json({ error: "Position not found" }, 404);
+    }
+
+    let exitLongPrice = position.current_long_price;
+    let exitShortPrice = position.current_short_price;
+    let liveCloseSuccess = false;
+
+    // Execute LIVE close if position is in live mode
+    if (position.mode === 'live') {
+      const exchanges = initializeExchanges();
+      
+      if (exchanges) {
+        const closeResult = await closeLiveHedge(
+          exchanges,
+          position.symbol,
+          position.long_exchange,
+          position.short_exchange,
+          position.size_eur
+        );
+
+        if (closeResult.success) {
+          exitLongPrice = closeResult.longPrice;
+          exitShortPrice = closeResult.shortPrice;
+          liveCloseSuccess = true;
+        } else {
+          // Log error but continue to update DB
+          await admin.from('autopilot_audit_log').insert({
+            action: 'LIVE_CLOSE_ERROR',
+            level: 'error',
+            entity_id: payload.position_id,
+            details: { error: closeResult.error },
+          });
+        }
+      } else {
+        await admin.from('autopilot_audit_log').insert({
+          action: 'LIVE_CLOSE_NO_KEYS',
+          level: 'error',
+          entity_id: payload.position_id,
+          details: { error: 'API keys not configured' },
+        });
+      }
+    }
+
+    // Calculate realized PnL
+    const priceDiff = (exitLongPrice - position.entry_long_price) - (exitShortPrice - position.entry_short_price);
+    const realizedPnlEur = priceDiff * (position.size_eur / position.entry_long_price) + (position.funding_collected_eur || 0);
+    const realizedPnlPercent = (realizedPnlEur / position.size_eur) * 100;
+
     const { error } = await admin
       .from("autopilot_positions")
       .update({
         status: "closed",
         exit_ts: nowIso,
         exit_reason: payload.reason ?? "Manual close",
+        exit_long_price: exitLongPrice,
+        exit_short_price: exitShortPrice,
+        realized_pnl_eur: realizedPnlEur,
+        realized_pnl_percent: realizedPnlPercent,
         updated_at: nowIso,
       })
       .eq("id", payload.position_id);
 
     if (error) return json({ error: error.message }, 500);
 
-    return json({ ok: true });
+    await admin.from('autopilot_audit_log').insert({
+      action: `CLOSE: ${position.symbol}`,
+      level: 'action',
+      entity_id: payload.position_id,
+      details: { 
+        reason: payload.reason, 
+        realizedPnlEur,
+        mode: position.mode,
+        liveCloseSuccess,
+      },
+    });
+
+    return json({ ok: true, liveClose: liveCloseSuccess, realizedPnlEur });
   }
 
+  // ============= OPEN POSITION =============
   if (payload.action === "open_position") {
-    // Get current state to check mode
-    const { data: currentState } = await admin
-      .from("autopilot_state")
-      .select("mode, kill_switch_active")
-      .limit(1)
-      .maybeSingle();
-
-    if (currentState?.kill_switch_active) {
+    if (stateRow?.kill_switch_active) {
       return json({ error: "Kill switch is active" }, 400);
     }
 
-    // Count open positions
     const { count } = await admin
       .from("autopilot_positions")
       .select("*", { count: "exact", head: true })
@@ -168,15 +450,56 @@ Deno.serve(async (req) => {
       return json({ error: "Max 8 positions reached" }, 400);
     }
 
-    // Mock prices for paper trading
-    const mockPrice = 50000 + Math.random() * 1000;
     const hedgeId = crypto.randomUUID();
-    const hedgeSize = 50; // €50 per hedge
-    const spreadPercent = payload.spread_bps / 100 / 100; // Convert bps to decimal
+    const hedgeSize = 50;
+    const mode = currentMode;
+
+    let entryLongPrice: number;
+    let entryShortPrice: number;
+    let longOrderId: string | undefined;
+    let shortOrderId: string | undefined;
+
+    if (mode === 'live') {
+      // LIVE MODE - Execute real trades
+      const exchanges = initializeExchanges();
+      
+      if (!exchanges) {
+        return json({ error: "API keys not configured for LIVE trading" }, 500);
+      }
+
+      const hedgeResult = await executeLiveHedge(
+        exchanges,
+        payload.symbol,
+        payload.long_exchange,
+        payload.short_exchange,
+        hedgeSize
+      );
+
+      if (!hedgeResult.success) {
+        await admin.from('autopilot_audit_log').insert({
+          action: 'MANUAL_LIVE_FAILED',
+          level: 'error',
+          details: { symbol: payload.symbol, error: hedgeResult.error },
+        });
+        return json({ error: hedgeResult.error }, 500);
+      }
+
+      entryLongPrice = hedgeResult.longPrice;
+      entryShortPrice = hedgeResult.shortPrice;
+      longOrderId = hedgeResult.longOrderId;
+      shortOrderId = hedgeResult.shortOrderId;
+
+    } else {
+      // PAPER MODE - Mock prices
+      const mockPrice = 50000 + Math.random() * 1000;
+      const spreadPercent = payload.spread_bps / 100 / 100;
+      entryLongPrice = mockPrice;
+      entryShortPrice = mockPrice * (1 + spreadPercent * 0.1);
+    }
 
     const { error } = await admin.from("autopilot_positions").insert({
       hedge_id: hedgeId,
-      mode: currentState?.mode ?? "paper",
+      mode,
       symbol: payload.symbol,
       long_exchange: payload.long_exchange,
       short_exchange: payload.short_exchange,
@@ -184,24 +507,43 @@ Deno.serve(async (req) => {
       leverage: 1,
       risk_tier: "safe",
       entry_ts: nowIso,
-      entry_long_price: mockPrice,
-      entry_short_price: mockPrice * (1 + spreadPercent * 0.1),
+      entry_long_price: entryLongPrice,
+      entry_short_price: entryShortPrice,
       entry_funding_spread_8h: payload.spread_bps / 100,
-      entry_score: payload.score,
-      current_long_price: mockPrice,
-      current_short_price: mockPrice * (1 + spreadPercent * 0.1),
+      entry_score: Math.round(payload.score),
+      current_long_price: entryLongPrice,
+      current_short_price: entryShortPrice,
       funding_collected_eur: 0,
       intervals_collected: 0,
       unrealized_pnl_eur: 0,
       unrealized_pnl_percent: 0,
       pnl_drift: 0,
       status: "open",
-      risk_snapshot: { manual: true, opened_at: nowIso },
+      risk_snapshot: { 
+        manual: true, 
+        opened_at: nowIso,
+        longOrderId,
+        shortOrderId,
+      },
     });
 
     if (error) return json({ error: error.message }, 500);
 
-    return json({ ok: true, hedge_id: hedgeId, symbol: payload.symbol });
+    await admin.from('autopilot_audit_log').insert({
+      action: `MANUAL_${mode.toUpperCase()}_ENTRY: ${payload.symbol}`,
+      level: 'action',
+      entity_id: hedgeId,
+      details: { 
+        symbol: payload.symbol, 
+        mode,
+        entryLongPrice,
+        entryShortPrice,
+        longOrderId,
+        shortOrderId,
+      },
+    });
+
+    return json({ ok: true, hedge_id: hedgeId, symbol: payload.symbol, mode, liveOrder: mode === 'live' });
   }
 
   return json({ error: "Unknown action" }, 400);
