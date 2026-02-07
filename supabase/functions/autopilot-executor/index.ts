@@ -47,14 +47,19 @@ interface HedgeResult {
   error?: string;
 }
 
-function initializeExchanges(): ExchangeClients | null {
-  const binanceKey = Deno.env.get('BINANCE_API_KEY');
-  const binanceSecret = Deno.env.get('BINANCE_API_SECRET');
+function initializeExchanges(useSandbox: boolean = false): ExchangeClients | null {
+  // Use testnet keys for sandbox mode, mainnet keys for live
+  const binanceKey = useSandbox 
+    ? Deno.env.get('BINANCE_TESTNET_API_KEY') 
+    : Deno.env.get('BINANCE_API_KEY');
+  const binanceSecret = useSandbox 
+    ? Deno.env.get('BINANCE_TESTNET_API_SECRET') 
+    : Deno.env.get('BINANCE_API_SECRET');
   const okxKey = Deno.env.get('OKX_API_KEY');
   const okxSecret = Deno.env.get('OKX_API_SECRET');
   const okxPassphrase = Deno.env.get('OKX_PASSPHRASE');
 
-  // Check minimum required keys (Binance + OKX)
+  // Check minimum required keys
   if (!binanceKey || !binanceSecret || !okxKey || !okxSecret || !okxPassphrase) {
     return null;
   }
@@ -65,23 +70,43 @@ function initializeExchanges(): ExchangeClients | null {
     options: { defaultType: 'future' },
   });
 
+  // Enable sandbox/testnet mode
+  if (useSandbox) {
+    binance.setSandboxMode(true);
+  }
+
   const okx = new ccxt.okx({
     apiKey: okxKey,
     secret: okxSecret,
     password: okxPassphrase,
   });
 
-  // Bybit is optional - use same keys as Binance for now or dedicated keys
-  const bybitKey = Deno.env.get('BYBIT_API_KEY') || binanceKey;
-  const bybitSecret = Deno.env.get('BYBIT_API_SECRET') || binanceSecret;
-  
-  const bybit = new ccxt.bybit({
-    apiKey: bybitKey,
-    secret: bybitSecret,
-    options: { defaultType: 'linear' },
-  });
+  // OKX demo mode is enabled via setSandboxMode
+  if (useSandbox) {
+    okx.setSandboxMode(true);
+  }
 
-  return { binance, okx, bybit };
+  // Bybit - skip in sandbox mode unless it has dedicated testnet keys
+  const bybitTestnetKey = Deno.env.get('BYBIT_TESTNET_API_KEY');
+  const bybitTestnetSecret = Deno.env.get('BYBIT_TESTNET_API_SECRET');
+  const bybitKey = useSandbox ? bybitTestnetKey : (Deno.env.get('BYBIT_API_KEY') || binanceKey);
+  const bybitSecret = useSandbox ? bybitTestnetSecret : (Deno.env.get('BYBIT_API_SECRET') || binanceSecret);
+  
+  // Create bybit client only if we have valid keys (not null in sandbox mode)
+  let bybit: ccxt.bybit | null = null;
+  if (bybitKey && bybitSecret) {
+    bybit = new ccxt.bybit({
+      apiKey: bybitKey,
+      secret: bybitSecret,
+      options: { defaultType: 'linear' },
+    });
+
+    if (useSandbox) {
+      bybit.setSandboxMode(true);
+    }
+  }
+
+  return { binance, okx, bybit: bybit as ccxt.bybit };
 }
 
 function normalizeCcxtSymbol(symbol: string): string {
@@ -94,7 +119,7 @@ function getExchangeClient(exchanges: ExchangeClients, exchangeName: string): cc
   const name = exchangeName.toLowerCase();
   if (name.includes('binance')) return exchanges.binance;
   if (name.includes('okx') || name.includes('okex')) return exchanges.okx;
-  if (name.includes('bybit')) return exchanges.bybit;
+  if (name.includes('bybit')) return exchanges.bybit || null; // May be null in sandbox without testnet keys
   return null;
 }
 
@@ -258,20 +283,28 @@ Deno.serve(async (req) => {
     const mode = state.mode || 'paper';
     log(`Mode: ${mode}`);
 
-    // For LIVE mode, verify API keys are configured
+    // Initialize exchange clients based on mode
     let exchanges: ExchangeClients | null = null;
-    if (mode === 'live') {
-      exchanges = initializeExchanges();
+    const useSandbox = mode === 'paper';
+    
+    if (mode === 'live' || mode === 'paper') {
+      exchanges = initializeExchanges(useSandbox);
       if (!exchanges) {
-        log('ERROR: LIVE mode requires API keys - falling back to paper');
-        await supabase.from('autopilot_audit_log').insert({
-          action: 'LIVE_CONFIG_ERROR',
-          level: 'error',
-          details: { error: 'API keys not configured for LIVE mode' },
-        });
-        // Continue in paper mode for safety
+        if (mode === 'live') {
+          log('ERROR: LIVE mode requires API keys - cannot proceed');
+          await supabase.from('autopilot_audit_log').insert({
+            action: 'LIVE_CONFIG_ERROR',
+            level: 'error',
+            details: { error: 'API keys not configured for LIVE mode' },
+          });
+          return new Response(JSON.stringify({ ok: false, error: 'API keys not configured' }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        } else {
+          log('TESTNET: API keys not configured - using mock prices');
+        }
       } else {
-        log('LIVE: Exchange clients initialized');
+        log(`${useSandbox ? 'TESTNET' : 'LIVE'}: Exchange clients initialized (sandbox: ${useSandbox})`);
       }
     }
 
@@ -386,12 +419,25 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      selectedOpp = opp;
-      symbol = oppSymbol;
       const longExData = exchangeMap.get(opp.long_exchange_id);
       const shortExData = exchangeMap.get(opp.short_exchange_id);
-      longEx = longExData?.name || 'Binance';
-      shortEx = shortExData?.name || 'OKX';
+      const potentialLongEx = longExData?.name || 'Binance';
+      const potentialShortEx = shortExData?.name || 'OKX';
+
+      // In sandbox mode, skip opportunities that require Bybit (no testnet keys)
+      if (exchanges && useSandbox) {
+        const longClient = getExchangeClient(exchanges, potentialLongEx);
+        const shortClient = getExchangeClient(exchanges, potentialShortEx);
+        if (!longClient || !shortClient) {
+          log(`${oppSymbol}: Skipping - exchange not available in testnet (${potentialLongEx}/${potentialShortEx})`);
+          continue;
+        }
+      }
+
+      selectedOpp = opp;
+      symbol = oppSymbol;
+      longEx = potentialLongEx;
+      shortEx = potentialShortEx;
       spreadBps = oppSpreadBps;
       entryScore = Math.round(Number(opp.opportunity_score ?? 80));
       
@@ -407,7 +453,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    // 7. Execute position - LIVE or PAPER
+    // 7. Execute position - LIVE, PAPER (testnet), or mock
     const hedgeId = crypto.randomUUID();
     const riskTier = String(selectedOpp.risk_tier || 'safe');
     let entryLongPrice: number;
@@ -416,9 +462,10 @@ Deno.serve(async (req) => {
     let shortOrderId: string | undefined;
     let executionMode = mode;
 
-    if (mode === 'live' && exchanges) {
-      // LIVE MODE - Execute real trades
-      log(`LIVE: Executing hedge for ${symbol}`);
+    if (exchanges) {
+      // Execute real trades (LIVE on mainnet, PAPER on testnet)
+      const modeLabel = mode === 'live' ? 'LIVE' : 'TESTNET';
+      log(`${modeLabel}: Executing hedge for ${symbol}`);
       
       const hedgeResult = await executeLiveHedge(
         exchanges,
@@ -430,14 +477,14 @@ Deno.serve(async (req) => {
       );
 
       if (!hedgeResult.success) {
-        log(`LIVE hedge failed: ${hedgeResult.error}`);
+        log(`${modeLabel} hedge failed: ${hedgeResult.error}`);
         await supabase.from('autopilot_audit_log').insert({
-          action: 'LIVE_HEDGE_FAILED',
+          action: `${modeLabel}_HEDGE_FAILED`,
           level: 'error',
           details: { symbol, longEx, shortEx, error: hedgeResult.error },
         });
         
-        // Don't open paper position on LIVE failure - just skip
+        // Skip on failure
         await updateLastScan(supabase);
         return new Response(JSON.stringify({ 
           ok: false, 
@@ -454,17 +501,17 @@ Deno.serve(async (req) => {
       longOrderId = hedgeResult.longOrderId;
       shortOrderId = hedgeResult.shortOrderId;
       
-      log(`LIVE: Hedge executed - Long: ${entryLongPrice}, Short: ${entryShortPrice}`);
+      log(`${modeLabel}: Hedge executed - Long: ${entryLongPrice}, Short: ${entryShortPrice}`);
       
     } else {
-      // PAPER MODE - Mock prices
+      // No exchange clients - use mock prices (fallback for paper without testnet keys)
       executionMode = 'paper';
       entryLongPrice = symbol.includes('BTC') ? 95000 : 
                        symbol.includes('ETH') ? 3400 : 
                        symbol.includes('SOL') ? 180 : 100;
       entryShortPrice = entryLongPrice * 1.0001;
       
-      log(`PAPER: Mock prices - Long: ${entryLongPrice}, Short: ${entryShortPrice}`);
+      log(`PAPER (mock): Prices - Long: ${entryLongPrice}, Short: ${entryShortPrice}`);
     }
 
     // 8. Insert position
