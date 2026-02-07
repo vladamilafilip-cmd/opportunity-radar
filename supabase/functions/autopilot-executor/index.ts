@@ -25,12 +25,18 @@ interface AutopilotConfig {
 
 const DEFAULT_CONFIG: AutopilotConfig = {
   capital: { hedgeSizeEur: 50, maxDeployedEur: 400 },
-  thresholds: { safe: { minProfitBps: 5, maxSpreadBps: 25 } }, // Lowered from 30 to 5 bps
+  thresholds: { safe: { minProfitBps: 1, maxSpreadBps: 50 } }, // Ultra aggressive: 1 bps min
   risk: { maxConcurrentHedges: 8, maxDailyDrawdownEur: 50 },
 };
 
-// Allowed exchanges for trading
-const ALLOWED_EXCHANGES = ['binance', 'okx', 'bybit'];
+// Allowed exchanges for trading (multiple variants for matching)
+const ALLOWED_EXCHANGES = ['binance', 'okx', 'bybit', 'binanceusdm', 'binancecoinm', 'okex'];
+
+function matchExchange(code: string): boolean {
+  if (!code) return false;
+  const lower = code.toLowerCase();
+  return lower.includes('binance') || lower.includes('okx') || lower.includes('okex') || lower.includes('bybit');
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -129,26 +135,33 @@ Deno.serve(async (req) => {
         short_exchange:short_exchange_id (code, name)
       `)
       .eq('status', 'active')
-      .gte('net_edge_8h_bps', 5) // Min 5 bps profit
+      .gte('net_edge_8h_bps', 1) // Ultra aggressive: 1 bps minimum
       .order('net_edge_8h_bps', { ascending: false })
       .limit(500);
 
     if (oppError) throw oppError;
 
-    // Filter for allowed exchanges (Binance, OKX, Bybit) and safe/medium risk
+    // Debug: log first few exchange codes to see what we're getting
+    const sampleExchanges = (opportunities || []).slice(0, 5).map(o => ({
+      long: (o.long_exchange as any)?.code,
+      short: (o.short_exchange as any)?.code,
+    }));
+    log(`Sample exchanges: ${JSON.stringify(sampleExchanges)}`);
+
+    // Filter for allowed exchanges (Binance, OKX, Bybit) with flexible matching
     const validOpps = (opportunities || []).filter(opp => {
-      const longEx = (opp.long_exchange as any)?.code?.toLowerCase();
-      const shortEx = (opp.short_exchange as any)?.code?.toLowerCase();
+      const longEx = (opp.long_exchange as any)?.code || '';
+      const shortEx = (opp.short_exchange as any)?.code || '';
       const riskTier = opp.risk_tier || 'medium';
       
-      // Must be on allowed exchanges
-      if (!ALLOWED_EXCHANGES.includes(longEx) || !ALLOWED_EXCHANGES.includes(shortEx)) {
+      // Must match allowed exchanges (flexible matching)
+      if (!matchExchange(longEx) || !matchExchange(shortEx)) {
         return false;
       }
       // Must be different exchanges
-      if (longEx === shortEx) return false;
-      // Only safe or medium risk for auto-trading
-      if (riskTier === 'high') return false;
+      if (longEx.toLowerCase() === shortEx.toLowerCase()) return false;
+      // Allow all risk tiers for aggressive mode
+      // if (riskTier === 'high') return false;
       
       return true;
     });
