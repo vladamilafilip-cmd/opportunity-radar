@@ -58,7 +58,78 @@ export function useOpportunities() {
     setError(null);
 
     try {
-      // Fetch from arbitrage_opportunities with joins - NO STRICT FILTERING
+      const generateFromMetrics = async () => {
+        // Fallback to computed_metrics_v2 (useful when arbitrage_opportunities exists but none match allowed exchanges)
+        const whitelist = autopilotConfig.symbols.whitelist;
+
+        const { data: metricsData, error: metricsError } = await supabase
+          .from('computed_metrics_v2')
+          .select(`
+            id,
+            symbol_id,
+            exchange_id,
+            funding_rate_8h,
+            funding_rate_annual,
+            liquidity_score,
+            spread_bps,
+            symbols:symbol_id (display_name, base_asset),
+            exchanges:exchange_id (code, name)
+          `)
+          .order('funding_rate_8h', { ascending: false })
+          .limit(50);
+
+        if (metricsError) throw metricsError;
+
+        // Generate synthetic opportunities from metrics
+        const syntheticOpps: Opportunity[] = [];
+        const symbolGroups = new Map<string, typeof metricsData>();
+
+        metricsData?.forEach(m => {
+          const symbolName = (m.symbols as any)?.display_name;
+          if (!symbolName) return;
+          if (!symbolGroups.has(symbolName)) symbolGroups.set(symbolName, []);
+          symbolGroups.get(symbolName)!.push(m);
+        });
+
+        symbolGroups.forEach((metrics, symbolName) => {
+          if (metrics.length < 2) return;
+
+          const baseAsset = (metrics[0].symbols as any)?.base_asset;
+          if (whitelist.length > 0 && !whitelist.includes(baseAsset)) return;
+
+          // Find best long (most negative funding) and best short (most positive)
+          const sorted = [...metrics].sort((a, b) => (a.funding_rate_8h || 0) - (b.funding_rate_8h || 0));
+          const longSide = sorted[0];
+          const shortSide = sorted[sorted.length - 1];
+
+          const longExCode = (longSide.exchanges as any)?.code?.toLowerCase() || '';
+          const shortExCode = (shortSide.exchanges as any)?.code?.toLowerCase() || '';
+          if (!longExCode || !shortExCode) return;
+          if (longExCode === shortExCode) return;
+          if (!isBothExchangesAllowed(longExCode, shortExCode)) return;
+
+          const spreadBps = Math.abs((shortSide.funding_rate_8h || 0) - (longSide.funding_rate_8h || 0)) * 10000;
+          const apr = spreadBps * 1095 / 100;
+          const score = Math.min(100, Math.round(50 + spreadBps + (longSide.liquidity_score || 0) / 2));
+
+          syntheticOpps.push({
+            id: `${symbolName}-${Date.now()}`,
+            symbol: symbolName,
+            longExchange: (longSide.exchanges as any)?.name || longExCode,
+            shortExchange: (shortSide.exchanges as any)?.name || shortExCode,
+            spreadBps: Math.round(spreadBps * 100) / 100,
+            apr: Math.round(apr),
+            score,
+            riskTier: calculateRiskTier(spreadBps, score),
+            isNew: true,
+            isExtended: hasExtendedExchange(longExCode, shortExCode),
+          });
+        });
+
+        setOpportunities(syntheticOpps.sort((a, b) => b.score - a.score).slice(0, 25));
+      };
+
+      // Fetch from arbitrage_opportunities with joins
       const { data, error: fetchError } = await supabase
         .from('arbitrage_opportunities')
         .select(`
@@ -83,83 +154,7 @@ export function useOpportunities() {
       if (fetchError) throw fetchError;
 
       if (!data || data.length === 0) {
-        // Fallback to computed_metrics if no opportunities
-        const whitelist = autopilotConfig.symbols.whitelist;
-        
-        const { data: metricsData, error: metricsError } = await supabase
-          .from('computed_metrics_v2')
-          .select(`
-            id,
-            symbol_id,
-            exchange_id,
-            funding_rate_8h,
-            funding_rate_annual,
-            liquidity_score,
-            spread_bps,
-            symbols:symbol_id (display_name, base_asset),
-            exchanges:exchange_id (code, name)
-          `)
-          .order('funding_rate_8h', { ascending: false })
-          .limit(50);
-
-        if (metricsError) throw metricsError;
-
-        // Generate synthetic opportunities from metrics
-        const syntheticOpps: Opportunity[] = [];
-        const symbolGroups = new Map<string, typeof metricsData>();
-        
-        metricsData?.forEach(m => {
-          const symbolName = (m.symbols as any)?.display_name;
-          if (!symbolName) return;
-          if (!symbolGroups.has(symbolName)) {
-            symbolGroups.set(symbolName, []);
-          }
-          symbolGroups.get(symbolName)!.push(m);
-        });
-
-        // For each symbol with 2+ exchanges, create opportunity
-        symbolGroups.forEach((metrics, symbolName) => {
-          if (metrics.length < 2) return;
-          
-          const baseAsset = (metrics[0].symbols as any)?.base_asset;
-          // Skip if not in whitelist (soft filter for fallback)
-          if (whitelist.length > 0 && !whitelist.includes(baseAsset)) return;
-
-          // Find best long (negative funding = you get paid) and short
-          const sorted = [...metrics].sort((a, b) => 
-            (a.funding_rate_8h || 0) - (b.funding_rate_8h || 0)
-          );
-          
-          const longSide = sorted[0]; // Most negative (pay you)
-          const shortSide = sorted[sorted.length - 1]; // Most positive
-          
-          const longExCode = (longSide.exchanges as any)?.code?.toLowerCase() || '';
-          const shortExCode = (shortSide.exchanges as any)?.code?.toLowerCase() || '';
-          
-          if (longExCode === shortExCode) return;
-
-          const spreadBps = Math.abs((shortSide.funding_rate_8h || 0) - (longSide.funding_rate_8h || 0)) * 10000;
-          const apr = spreadBps * 1095 / 100; // Annualized
-          const score = Math.min(100, Math.round(50 + spreadBps + (longSide.liquidity_score || 0) / 2));
-
-          // Only add if both exchanges are allowed
-          if (!isBothExchangesAllowed(longExCode, shortExCode)) return;
-
-          syntheticOpps.push({
-            id: `${symbolName}-${Date.now()}`,
-            symbol: symbolName,
-            longExchange: (longSide.exchanges as any)?.name || longExCode,
-            shortExchange: (shortSide.exchanges as any)?.name || shortExCode,
-            spreadBps: Math.round(spreadBps * 100) / 100,
-            apr: Math.round(apr),
-            score,
-            riskTier: calculateRiskTier(spreadBps, score),
-            isNew: true,
-            isExtended: hasExtendedExchange(longExCode, shortExCode),
-          });
-        });
-
-        setOpportunities(syntheticOpps.sort((a, b) => b.score - a.score).slice(0, 25));
+        await generateFromMetrics();
         return;
       }
 
@@ -199,7 +194,15 @@ export function useOpportunities() {
         }
       });
 
-      setOpportunities(Array.from(dedupMap.values()));
+      const deduped = Array.from(dedupMap.values());
+
+      // If DB returned opportunities but none match allowed exchanges, fall back to metrics-derived candidates
+      if (deduped.length === 0) {
+        await generateFromMetrics();
+        return;
+      }
+
+      setOpportunities(deduped);
     } catch (err: any) {
       console.error('Error fetching opportunities:', err);
       setError(err.message);
