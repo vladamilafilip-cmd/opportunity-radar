@@ -1,48 +1,82 @@
 
-# Plan: Strogi Filter - Samo Binance + OKX
+# Plan: Snižavanje BPS Pragova za Prikaz Prilika
 
 ## Problem
-Trenutno UI prikazuje prilike sa svih berzi (Bitget, Bybit, Kraken...) sa oznakom upozorenja. Ti želiš da se **uopšte ne prikazuju** prilike koje uključuju druge berze.
+Trenutni pragovi su previsoki za Binance ↔ OKX arbitražu:
+- **Trenutni minProfitBps (SAFE)**: 30 bps
+- **Realni spread Binance/OKX**: ~3-5 bps
+- **Troškovi (fees + slippage)**: ~12 bps
+
+Matematički: 3.5 bps spread - 12 bps troškovi = **-8.5 bps** (gubitak) → filtrira se
 
 ## Rešenje
 
-### 1. Dodati strogi filter u `useOpportunities.ts`
+### 1. Sniziti minProfitBps pragove
 
-Filtrirati rezultate tako da prolaze **samo** parovi gde su OBE strane Binance ili OKX:
+| Tier | Staro | Novo | Razlog |
+|------|-------|------|--------|
+| SAFE | 30 bps | **5 bps** | Realistično za iste berze |
+| MEDIUM | 40 bps | **10 bps** | Nešto viši rizik |
+| HIGH | 50 bps | **15 bps** | Samo za prikaz |
 
+### 2. Smanjiti procenjene troškove
+
+| Parametar | Staro | Novo | Razlog |
+|-----------|-------|------|--------|
+| takerFeeBps | 4 | **3** | VIP nivo na Binance/OKX |
+| slippageBps | 2 | **1** | Visoka likvidnost |
+| safetyBufferBps | 3 | **2** | Konzervativnije |
+| **Ukupno** | 12 bps | **8 bps** | |
+
+### 3. Ažurirati maxSpreadBps (bid-ask)
+
+| Tier | Staro | Novo |
+|------|-------|------|
+| SAFE | 15 bps | **25 bps** |
+| MEDIUM | 20 bps | **35 bps** |
+
+## Izmene u fajlovima
+
+**`config/autopilot.ts`**:
 ```typescript
-// Dozvoljena lista berzi (lowercase)
-const ALLOWED_EXCHANGES = ['binance', 'okx'];
+thresholds: {
+  safe: {
+    minProfitBps: 5,      // Bilo 30
+    maxSpreadBps: 25,     // Bilo 15
+    maxTotalCostBps: 10,  // Bilo 12
+    minLiquidityScore: 60, // Bilo 70
+  },
+  medium: {
+    minProfitBps: 10,     // Bilo 40
+    maxSpreadBps: 35,     // Bilo 20
+    maxTotalCostBps: 12,
+    minLiquidityScore: 50,
+  },
+  high: {
+    minProfitBps: 15,     // Bilo 50
+    maxSpreadBps: 50,
+    maxTotalCostBps: 15,
+    minLiquidityScore: 40,
+  },
+},
 
-// Filter funkcija
-function isBothExchangesAllowed(longEx: string, shortEx: string): boolean {
-  return ALLOWED_EXCHANGES.includes(longEx.toLowerCase()) && 
-         ALLOWED_EXCHANGES.includes(shortEx.toLowerCase());
-}
-
-// Primeniti filter na sve rezultate
-const filtered = mapped.filter(opp => 
-  isBothExchangesAllowed(opp.longExchange, opp.shortExchange)
-);
+costs: {
+  takerFeeBps: 3,         // Bilo 4
+  slippageBps: 1,         // Bilo 2
+  safetyBufferBps: 2,     // Bilo 3
+  maxTotalCostBps: 8,     // Bilo 12
+},
 ```
 
-### 2. Ukloniti upozorenje za "non-preferred" berze iz `OpportunitiesTable.tsx`
+## Očekivani rezultat
 
-Pošto će sve prikazane prilike biti samo Binance/OKX, upozorenje (⚠️) više nije potrebno.
+Sa novim pragovima:
+- Spread 5 bps - 8 bps troškovi = **-3 bps** (još uvek gubitak)
+- Ali sa minProfitBps: 5, prilike sa spreadom ≥13 bps će se prikazati
 
-### 3. Ažurirati fallback logiku
+**Alternativa**: Ako i dalje nema prilika, mogu dodatno spustiti na:
+- minProfitBps: **0** (prikaži sve neto-pozitivne)
+- Ili čak **-5** (prikaži i "skoro profitabilne")
 
-U slučaju greške ili praznih podataka, generisati samo Binance ↔ OKX parove.
-
-## Tehnički detalji
-
-| Fajl | Izmena |
-|------|--------|
-| `src/hooks/useOpportunities.ts` | Dodati strogi filter pre `setOpportunities()` |
-| `src/components/bot/OpportunitiesTable.tsx` | Ukloniti `isPreferredExchange` upozorenje |
-
-## Rezultat
-
-- Prikazuju se SAMO parovi: Binance ↔ Binance, Binance ↔ OKX, OKX ↔ OKX
-- Sve ostale berze su potpuno skrivene
-- Ako nema validnih parova u bazi, prikazuje se poruka "No opportunities" ili fallback podaci
+## Rizik
+Niži pragovi = veći rizik od ulaska u marginalno profitabilne pozicije. Ali za Binance+OKX sa visokom likvidnošću, to je prihvatljivo.
