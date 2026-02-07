@@ -2,6 +2,16 @@
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { 
   Bot, 
   Play, 
@@ -52,6 +62,8 @@ export default function FundingBot() {
   } = useAutopilotStore();
 
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [showLiveConfirm, setShowLiveConfirm] = useState(false);
+  const [pendingMode, setPendingMode] = useState<AutopilotMode | null>(null);
   
   // Real opportunities from database
   const { opportunities, isLoading: oppsLoading, refresh: refreshOpps } = useOpportunities();
@@ -93,13 +105,22 @@ export default function FundingBot() {
 
   const handleModeChange = async (newMode: AutopilotMode) => {
     if (newMode === 'live' && mode !== 'live') {
-      // Confirm before switching to live
-      if (!confirm('⚠️ Switch to LIVE mode? Real trades will be executed!')) {
-        return;
-      }
+      // Show confirmation dialog for LIVE mode
+      setPendingMode(newMode);
+      setShowLiveConfirm(true);
+      return;
     }
     await setMode(newMode);
     toast.success(`Mode changed to ${newMode.toUpperCase()}`);
+  };
+
+  const confirmLiveMode = async () => {
+    if (pendingMode) {
+      await setMode(pendingMode);
+      toast.success('🔴 LIVE MODE ACTIVATED - Real trades enabled!');
+    }
+    setShowLiveConfirm(false);
+    setPendingMode(null);
   };
 
   const handleStartStop = async () => {
@@ -287,6 +308,45 @@ export default function FundingBot() {
           </p>
         </div>
       </main>
+
+      {/* LIVE Mode Confirmation Dialog */}
+      <AlertDialog open={showLiveConfirm} onOpenChange={setShowLiveConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              Aktivacija LIVE Moda
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p className="font-semibold text-foreground">
+                  Ova akcija aktivira PRAVO trgovanje!
+                </p>
+                <ul className="list-disc list-inside space-y-1 text-sm">
+                  <li>Bot će izvršavati PRAVE naloge na Binance i OKX</li>
+                  <li>Vaš novac je u riziku - gubici su mogući</li>
+                  <li>Hedge veličina: €{autopilotConfig.capital.hedgeSizeEur} po poziciji</li>
+                  <li>Kill switch: €{autopilotConfig.risk.maxDailyDrawdownEur} dnevni gubitak</li>
+                </ul>
+                <p className="text-xs text-muted-foreground">
+                  Proverite da su API ključevi konfigurisani sa "Trade" dozvolama.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setPendingMode(null)}>
+              Odustani
+            </AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={confirmLiveMode}
+              className="bg-destructive hover:bg-destructive/90"
+            >
+              Razumem rizike, aktiviraj LIVE
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
