@@ -488,7 +488,8 @@ Deno.serve(async (req) => {
     }
 
     const hedgeId = crypto.randomUUID();
-    const hedgeSize = 50;
+    // Minimum ~€200 to meet exchange minimums (SOL needs ~1.5 SOL = ~$200+)
+    const hedgeSize = 200;
     const mode = currentMode;
 
     let entryLongPrice: number;
