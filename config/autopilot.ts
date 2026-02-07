@@ -106,33 +106,33 @@ export const autopilotConfig: AutopilotConfig = {
     okx: 8,
   },
   
-  // Strict thresholds for safety
+  // Optimized thresholds for Binance + OKX arbitrage
   thresholds: {
     safe: {
-      minProfitBps: 30,           // 0.03% min per 8h
-      maxSpreadBps: 15,           // 0.15% max bid-ask
-      maxTotalCostBps: 12,
-      minLiquidityScore: 70,
+      minProfitBps: 5,            // 0.005% min per 8h (sniženo sa 30)
+      maxSpreadBps: 25,           // 0.25% max bid-ask (povećano sa 15)
+      maxTotalCostBps: 10,
+      minLiquidityScore: 60,      // Sniženo sa 70
     },
     medium: {
-      minProfitBps: 40,
-      maxSpreadBps: 20,
-      maxTotalCostBps: 15,
-      minLiquidityScore: 60,
+      minProfitBps: 10,           // Sniženo sa 40
+      maxSpreadBps: 35,           // Povećano sa 20
+      maxTotalCostBps: 12,
+      minLiquidityScore: 50,
     },
     high: {
-      minProfitBps: 50,
-      maxSpreadBps: 25,
-      maxTotalCostBps: 20,
-      minLiquidityScore: 50,
+      minProfitBps: 15,           // Sniženo sa 50
+      maxSpreadBps: 50,
+      maxTotalCostBps: 15,
+      minLiquidityScore: 40,
     },
   },
   
   costs: {
-    takerFeeBps: 4,
-    slippageBps: 2,
-    safetyBufferBps: 3,
-    maxTotalCostBps: 12,
+    takerFeeBps: 3,               // VIP nivo (sniženo sa 4)
+    slippageBps: 1,               // Visoka likvidnost (sniženo sa 2)
+    safetyBufferBps: 2,           // Sniženo sa 3
+    maxTotalCostBps: 8,           // Ukupno 8 bps (sniženo sa 12)
   },
   
   exit: {
