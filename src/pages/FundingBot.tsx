@@ -258,6 +258,7 @@ export default function FundingBot() {
           {/* Top Opportunities */}
           <OpportunitiesTable
             opportunities={opportunities}
+            isLoading={oppsLoading}
             onEnter={handleEnterPosition}
             disabled={killSwitchActive || !isRunning}
           />
