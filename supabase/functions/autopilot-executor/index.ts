@@ -47,13 +47,12 @@ interface HedgeResult {
 }
 
 function initializeExchanges(useSandbox: boolean = false): ExchangeClients | null {
-  // Use testnet keys for sandbox mode, mainnet keys for live
-  const binanceKey = useSandbox 
-    ? Deno.env.get('BINANCE_TESTNET_API_KEY') 
-    : Deno.env.get('BINANCE_API_KEY');
-  const binanceSecret = useSandbox 
-    ? Deno.env.get('BINANCE_TESTNET_API_SECRET') 
-    : Deno.env.get('BINANCE_API_SECRET');
+  // IMPORTANT: Binance futures testnet is DEPRECATED (see CCXT announcement)
+  // For PAPER mode, we use mainnet keys for price fetch only (NO trade execution)
+  // For LIVE mode, we use mainnet keys and execute real trades
+  
+  const binanceKey = Deno.env.get('BINANCE_API_KEY');
+  const binanceSecret = Deno.env.get('BINANCE_API_SECRET');
   const okxKey = Deno.env.get('OKX_API_KEY');
   const okxSecret = Deno.env.get('OKX_API_SECRET');
   const okxPassphrase = Deno.env.get('OKX_PASSPHRASE');
@@ -68,22 +67,14 @@ function initializeExchanges(useSandbox: boolean = false): ExchangeClients | nul
     secret: binanceSecret,
     options: { defaultType: 'future' },
   });
-
-  // Enable sandbox/testnet mode
-  if (useSandbox) {
-    binance.setSandboxMode(true);
-  }
+  // DO NOT use sandbox mode - Binance futures testnet is deprecated
 
   const okx = new ccxt.okx({
     apiKey: okxKey,
     secret: okxSecret,
     password: okxPassphrase,
   });
-
-  // OKX demo mode is enabled via setSandboxMode
-  if (useSandbox) {
-    okx.setSandboxMode(true);
-  }
+  // DO NOT use sandbox mode for OKX either
 
   return { binance, okx };
 }
@@ -261,29 +252,26 @@ Deno.serve(async (req) => {
     const mode = state.mode || 'paper';
     log(`Mode: ${mode}`);
 
-    // Initialize exchange clients based on mode
+    // Initialize exchange clients (for price fetching and LIVE trading only)
     let exchanges: ExchangeClients | null = null;
-    const useSandbox = mode === 'paper';
     
-    if (mode === 'live' || mode === 'paper') {
-      exchanges = initializeExchanges(useSandbox);
-      if (!exchanges) {
-        if (mode === 'live') {
-          log('ERROR: LIVE mode requires API keys - cannot proceed');
-          await supabase.from('autopilot_audit_log').insert({
-            action: 'LIVE_CONFIG_ERROR',
-            level: 'error',
-            details: { error: 'API keys not configured for LIVE mode' },
-          });
-          return new Response(JSON.stringify({ ok: false, error: 'API keys not configured' }), {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          });
-        } else {
-          log('TESTNET: API keys not configured - using mock prices');
-        }
+    exchanges = initializeExchanges(false); // Always use mainnet
+    if (!exchanges) {
+      if (mode === 'live') {
+        log('ERROR: LIVE mode requires API keys - cannot proceed');
+        await supabase.from('autopilot_audit_log').insert({
+          action: 'LIVE_CONFIG_ERROR',
+          level: 'error',
+          details: { error: 'API keys not configured for LIVE mode' },
+        });
+        return new Response(JSON.stringify({ ok: false, error: 'API keys not configured' }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
       } else {
-        log(`${useSandbox ? 'TESTNET' : 'LIVE'}: Exchange clients initialized (sandbox: ${useSandbox})`);
+        log('PAPER: API keys not configured - using mock prices');
       }
+    } else {
+      log(`Exchanges initialized (mode: ${mode})`);
     }
 
     // 2. Get open positions
@@ -402,12 +390,12 @@ Deno.serve(async (req) => {
       const potentialLongEx = longExData?.name || 'Binance';
       const potentialShortEx = shortExData?.name || 'OKX';
 
-      // In sandbox mode, skip opportunities that require Bybit (no testnet keys)
-      if (exchanges && useSandbox) {
+      // Check if exchanges support the required clients
+      if (exchanges) {
         const longClient = getExchangeClient(exchanges, potentialLongEx);
         const shortClient = getExchangeClient(exchanges, potentialShortEx);
         if (!longClient || !shortClient) {
-          log(`${oppSymbol}: Skipping - exchange not available in testnet (${potentialLongEx}/${potentialShortEx})`);
+          log(`${oppSymbol}: Skipping - exchange not available (${potentialLongEx}/${potentialShortEx})`);
           continue;
         }
       }
@@ -440,10 +428,9 @@ Deno.serve(async (req) => {
     let shortOrderId: string | undefined;
     let executionMode = mode;
 
-    if (exchanges) {
-      // Execute real trades (LIVE on mainnet, PAPER on testnet)
-      const modeLabel = mode === 'live' ? 'LIVE' : 'TESTNET';
-      log(`${modeLabel}: Executing hedge for ${symbol}`);
+    if (mode === 'live' && exchanges) {
+      // LIVE mode - execute real trades on mainnet
+      log(`LIVE: Executing hedge for ${symbol}`);
       
       const hedgeResult = await executeLiveHedge(
         exchanges,
@@ -455,14 +442,13 @@ Deno.serve(async (req) => {
       );
 
       if (!hedgeResult.success) {
-        log(`${modeLabel} hedge failed: ${hedgeResult.error}`);
+        log(`LIVE hedge failed: ${hedgeResult.error}`);
         await supabase.from('autopilot_audit_log').insert({
-          action: `${modeLabel}_HEDGE_FAILED`,
+          action: 'LIVE_HEDGE_FAILED',
           level: 'error',
           details: { symbol, longEx, shortEx, error: hedgeResult.error },
         });
         
-        // Skip on failure
         await updateLastScan(supabase);
         return new Response(JSON.stringify({ 
           ok: false, 
@@ -479,17 +465,44 @@ Deno.serve(async (req) => {
       longOrderId = hedgeResult.longOrderId;
       shortOrderId = hedgeResult.shortOrderId;
       
-      log(`${modeLabel}: Hedge executed - Long: ${entryLongPrice}, Short: ${entryShortPrice}`);
+      log(`LIVE: Hedge executed - Long: ${entryLongPrice}, Short: ${entryShortPrice}`);
+      
+    } else if (mode === 'paper') {
+      // PAPER mode - simulate with real prices but NO actual trades
+      // (Binance futures testnet is deprecated)
+      executionMode = 'paper';
+      
+      if (exchanges) {
+        // Fetch real price for realistic simulation
+        try {
+          const ccxtSymbol = normalizeCcxtSymbol(symbol);
+          const ticker = await exchanges.binance.fetchTicker(ccxtSymbol);
+          entryLongPrice = ticker.last || 50000;
+          entryShortPrice = entryLongPrice * 1.0001;
+          log(`PAPER: Simulated entry at real price ${entryLongPrice}`);
+        } catch (priceError) {
+          log(`PAPER: Price fetch failed, using mock - ${priceError}`);
+          entryLongPrice = symbol.includes('BTC') ? 95000 : 
+                           symbol.includes('ETH') ? 3400 : 
+                           symbol.includes('SOL') ? 180 : 100;
+          entryShortPrice = entryLongPrice * 1.0001;
+        }
+      } else {
+        // No API keys - use mock prices
+        entryLongPrice = symbol.includes('BTC') ? 95000 : 
+                         symbol.includes('ETH') ? 3400 : 
+                         symbol.includes('SOL') ? 180 : 100;
+        entryShortPrice = entryLongPrice * 1.0001;
+        log(`PAPER (mock): Prices - Long: ${entryLongPrice}, Short: ${entryShortPrice}`);
+      }
       
     } else {
-      // No exchange clients - use mock prices (fallback for paper without testnet keys)
-      executionMode = 'paper';
-      entryLongPrice = symbol.includes('BTC') ? 95000 : 
-                       symbol.includes('ETH') ? 3400 : 
-                       symbol.includes('SOL') ? 180 : 100;
-      entryShortPrice = entryLongPrice * 1.0001;
-      
-      log(`PAPER (mock): Prices - Long: ${entryLongPrice}, Short: ${entryShortPrice}`);
+      // Fallback - no exchanges available for LIVE
+      log('ERROR: No exchanges available for execution');
+      await updateLastScan(supabase);
+      return new Response(JSON.stringify({ ok: false, error: 'No exchanges available' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     // 8. Insert position
