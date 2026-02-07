@@ -65,11 +65,19 @@ export default function FundingBot() {
     const unsubState = subscribeToState();
     const unsubPositions = subscribeToPositions();
     
+    // Periodic refresh for simulated PnL updates (every 30 seconds)
+    const pnlInterval = setInterval(() => {
+      if (mode === 'paper') {
+        fetchPositions(); // Recalculates simulated PnL based on elapsed time
+      }
+    }, 30000);
+    
     return () => {
       unsubState();
       unsubPositions();
+      clearInterval(pnlInterval);
     };
-  }, [fetchState, fetchPositions, fetchAuditLogs, subscribeToState, subscribeToPositions]);
+  }, [fetchState, fetchPositions, fetchAuditLogs, subscribeToState, subscribeToPositions, mode]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
