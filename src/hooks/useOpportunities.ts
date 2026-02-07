@@ -7,6 +7,14 @@ import { autopilotConfig } from '../../config/autopilot';
 
 export type RiskTier = 'safe' | 'medium' | 'high';
 
+// STRICT: Only these exchanges are allowed
+const ALLOWED_EXCHANGES = ['binance', 'okx'];
+
+function isBothExchangesAllowed(longEx: string, shortEx: string): boolean {
+  return ALLOWED_EXCHANGES.includes(longEx.toLowerCase()) && 
+         ALLOWED_EXCHANGES.includes(shortEx.toLowerCase());
+}
+
 export interface Opportunity {
   id: string;
   symbol: string;
@@ -17,7 +25,6 @@ export interface Opportunity {
   score: number;
   riskTier: RiskTier;
   isNew?: boolean;
-  isPreferredExchange?: boolean;
 }
 
 // Determine risk tier based on spread and score
@@ -30,11 +37,6 @@ function calculateRiskTier(spreadBps: number, score: number): RiskTier {
   return 'medium';
 }
 
-// Check if exchange is in preferred list
-function isPreferredExchange(exchangeCode: string): boolean {
-  const preferred = autopilotConfig.exchanges.map(e => e.code.toLowerCase());
-  return preferred.includes(exchangeCode?.toLowerCase() || '');
-}
 
 export function useOpportunities() {
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
@@ -130,6 +132,9 @@ export function useOpportunities() {
           const apr = spreadBps * 1095 / 100; // Annualized
           const score = Math.min(100, Math.round(50 + spreadBps + (longSide.liquidity_score || 0) / 2));
 
+          // STRICT: Only add if both exchanges are Binance or OKX
+          if (!isBothExchangesAllowed(longExCode, shortExCode)) return;
+
           syntheticOpps.push({
             id: `${symbolName}-${Date.now()}`,
             symbol: symbolName,
@@ -140,7 +145,6 @@ export function useOpportunities() {
             score,
             riskTier: calculateRiskTier(spreadBps, score),
             isNew: true,
-            isPreferredExchange: isPreferredExchange(longExCode) && isPreferredExchange(shortExCode),
           });
         });
 
@@ -148,26 +152,30 @@ export function useOpportunities() {
         return;
       }
 
-      // Map all opportunities - no strict filtering, just add metadata
-      const mapped: Opportunity[] = data.map(opp => {
-        const longExCode = (opp.long_exchange as any)?.code?.toLowerCase() || '';
-        const shortExCode = (opp.short_exchange as any)?.code?.toLowerCase() || '';
-        const spreadBps = opp.net_edge_8h_bps || 0;
-        const score = Math.round(opp.opportunity_score || 0);
-        
-        return {
-          id: opp.id,
-          symbol: (opp.symbols as any)?.display_name || 'Unknown',
-          longExchange: (opp.long_exchange as any)?.name || longExCode,
-          shortExchange: (opp.short_exchange as any)?.name || shortExCode,
-          spreadBps,
-          apr: (opp.net_edge_annual_percent || 0),
-          score,
-          riskTier: calculateRiskTier(spreadBps, score),
-          isNew: new Date(opp.ts).getTime() > Date.now() - 300000, // Last 5 min
-          isPreferredExchange: isPreferredExchange(longExCode) && isPreferredExchange(shortExCode),
-        };
-      });
+      // Map opportunities and STRICTLY filter to Binance + OKX only
+      const mapped: Opportunity[] = data
+        .map(opp => {
+          const longExCode = (opp.long_exchange as any)?.code?.toLowerCase() || '';
+          const shortExCode = (opp.short_exchange as any)?.code?.toLowerCase() || '';
+          const spreadBps = opp.net_edge_8h_bps || 0;
+          const score = Math.round(opp.opportunity_score || 0);
+          
+          return {
+            id: opp.id,
+            symbol: (opp.symbols as any)?.display_name || 'Unknown',
+            longExchange: (opp.long_exchange as any)?.name || longExCode,
+            shortExchange: (opp.short_exchange as any)?.name || shortExCode,
+            spreadBps,
+            apr: (opp.net_edge_annual_percent || 0),
+            score,
+            riskTier: calculateRiskTier(spreadBps, score),
+            isNew: new Date(opp.ts).getTime() > Date.now() - 300000,
+            longExCode,
+            shortExCode,
+          };
+        })
+        .filter(opp => isBothExchangesAllowed(opp.longExCode, opp.shortExCode))
+        .map(({ longExCode, shortExCode, ...rest }) => rest); // Remove temp fields
 
       // Deduplicate by symbol + exchanges (keep highest score)
       const dedupMap = new Map<string, Opportunity>();

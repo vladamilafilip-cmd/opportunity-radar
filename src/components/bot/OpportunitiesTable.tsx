@@ -17,7 +17,6 @@ export interface Opportunity {
   score: number;
   riskTier: RiskTier;
   isNew?: boolean;
-  isPreferredExchange?: boolean;
 }
 
 interface OpportunitiesTableProps {
@@ -114,11 +113,6 @@ export function OpportunitiesTable({
                     <span className="text-success">L:{opp.longExchange}</span>
                     {' / '}
                     <span className="text-destructive">S:{opp.shortExchange}</span>
-                    {opp.isPreferredExchange === false && (
-                      <Badge variant="outline" className="ml-1 text-[8px] px-1 py-0 bg-muted/50">
-                        ⚠️
-                      </Badge>
-                    )}
                   </div>
                   
                   <div className="col-span-2 text-right">
