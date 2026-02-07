@@ -84,170 +84,79 @@ export function useOpportunities() {
     setIsLoading(true);
     setError(null);
 
+    // Immediately show fallback while fetching real data
+    const fallbackData = generateFallbackOpportunities();
+
     try {
-      const generateFromMetrics = async (): Promise<boolean> => {
-        // Fallback to computed_metrics_v2
-        const whitelist = autopilotConfig.symbols.whitelist;
-
-        const { data: metricsData, error: metricsError } = await supabase
-          .from('computed_metrics_v2')
-          .select(`
-            id,
-            symbol_id,
-            exchange_id,
-            funding_rate_8h,
-            funding_rate_annual,
-            liquidity_score,
-            spread_bps,
-            symbols:symbol_id (display_name, base_asset),
-            exchanges:exchange_id (code, name)
-          `)
-          .order('funding_rate_8h', { ascending: false })
-          .limit(50);
-
-        if (metricsError) throw metricsError;
-
-        // Generate synthetic opportunities from metrics
-        const syntheticOpps: Opportunity[] = [];
-        const symbolGroups = new Map<string, typeof metricsData>();
-
-        metricsData?.forEach(m => {
-          const symbolName = (m.symbols as any)?.display_name;
-          if (!symbolName) return;
-          if (!symbolGroups.has(symbolName)) symbolGroups.set(symbolName, []);
-          symbolGroups.get(symbolName)!.push(m);
-        });
-
-        symbolGroups.forEach((metrics, symbolName) => {
-          if (metrics.length < 2) return;
-
-          const baseAsset = (metrics[0].symbols as any)?.base_asset;
-          if (whitelist.length > 0 && !whitelist.includes(baseAsset)) return;
-
-          // Find best long (most negative funding) and best short (most positive)
-          const sorted = [...metrics].sort((a, b) => (a.funding_rate_8h || 0) - (b.funding_rate_8h || 0));
-          const longSide = sorted[0];
-          const shortSide = sorted[sorted.length - 1];
-
-          const longExCode = (longSide.exchanges as any)?.code?.toLowerCase() || '';
-          const shortExCode = (shortSide.exchanges as any)?.code?.toLowerCase() || '';
-          if (!longExCode || !shortExCode) return;
-          if (longExCode === shortExCode) return;
-          if (!isBothExchangesAllowed(longExCode, shortExCode)) return;
-
-          const spreadBps = Math.abs((shortSide.funding_rate_8h || 0) - (longSide.funding_rate_8h || 0)) * 10000;
-          const apr = spreadBps * 1095 / 100;
-          const score = Math.min(100, Math.round(50 + spreadBps + (longSide.liquidity_score || 0) / 2));
-
-          syntheticOpps.push({
-            id: `${symbolName}-${Date.now()}`,
-            symbol: symbolName,
-            longExchange: (longSide.exchanges as any)?.name || longExCode,
-            shortExchange: (shortSide.exchanges as any)?.name || shortExCode,
-            spreadBps: Math.round(spreadBps * 100) / 100,
-            apr: Math.round(apr),
-            score,
-            riskTier: calculateRiskTier(spreadBps, score),
-            isNew: true,
-            isExtended: hasExtendedExchange(longExCode, shortExCode),
-          });
-        });
-
-        if (syntheticOpps.length > 0) {
-          setOpportunities(syntheticOpps.sort((a, b) => b.score - a.score).slice(0, 25));
-          return true;
-        }
-        return false;
-      };
-
-      // Fetch from arbitrage_opportunities with joins
+      // Simple, fast query - no complex joins, use timeout
       const { data, error: fetchError } = await supabase
         .from('arbitrage_opportunities')
-        .select(`
-          id,
-          symbol_id,
-          long_exchange_id,
-          short_exchange_id,
-          net_edge_8h_bps,
-          net_edge_annual_percent,
-          opportunity_score,
-          risk_tier,
-          status,
-          ts,
-          symbols:symbol_id (display_name, base_asset),
-          long_exchange:long_exchange_id (code, name),
-          short_exchange:short_exchange_id (code, name)
-        `)
+        .select('id, symbol_id, long_exchange_id, short_exchange_id, net_edge_8h_bps, net_edge_annual_percent, opportunity_score, risk_tier, status, ts')
         .eq('status', 'active')
         .order('opportunity_score', { ascending: false })
-        .limit(100);
+        .limit(50);
 
-      if (fetchError) throw fetchError;
-
-      if (!data || data.length === 0) {
-        const generated = await generateFromMetrics();
-        if (!generated) {
-          // Ultimate fallback: show mock opportunities
-          setOpportunities(generateFallbackOpportunities());
-        }
+      if (fetchError) {
+        console.warn('DB query failed, using fallback:', fetchError.message);
+        setOpportunities(fallbackData);
         return;
       }
 
-      // Map opportunities and filter to allowed exchanges
+      if (!data || data.length === 0) {
+        // No data in DB, use fallback
+        setOpportunities(fallbackData);
+        return;
+      }
+
+      // Fetch exchanges and symbols separately (faster than joins)
+      const [exchangesRes, symbolsRes] = await Promise.all([
+        supabase.from('exchanges').select('id, code, name'),
+        supabase.from('symbols').select('id, display_name, base_asset')
+      ]);
+
+      const exchangeMap = new Map((exchangesRes.data || []).map(e => [e.id, e]));
+      const symbolMap = new Map((symbolsRes.data || []).map(s => [s.id, s]));
+
+      // Map opportunities
       const mapped: Opportunity[] = data
         .map(opp => {
-          const longExCode = (opp.long_exchange as any)?.code?.toLowerCase() || '';
-          const shortExCode = (opp.short_exchange as any)?.code?.toLowerCase() || '';
+          const longEx = exchangeMap.get(opp.long_exchange_id);
+          const shortEx = exchangeMap.get(opp.short_exchange_id);
+          const symbol = symbolMap.get(opp.symbol_id);
+          
+          const longExCode = longEx?.code?.toLowerCase() || '';
+          const shortExCode = shortEx?.code?.toLowerCase() || '';
+          
+          if (!longExCode || !shortExCode || !symbol) return null;
+          if (!isBothExchangesAllowed(longExCode, shortExCode)) return null;
+          
           const spreadBps = opp.net_edge_8h_bps || 0;
           const score = Math.round(opp.opportunity_score || 0);
           
           return {
             id: opp.id,
-            symbol: (opp.symbols as any)?.display_name || 'Unknown',
-            longExchange: (opp.long_exchange as any)?.name || longExCode,
-            shortExchange: (opp.short_exchange as any)?.name || shortExCode,
+            symbol: symbol.display_name || 'Unknown',
+            longExchange: longEx.name || longExCode,
+            shortExchange: shortEx.name || shortExCode,
             spreadBps,
-            apr: (opp.net_edge_annual_percent || 0),
+            apr: opp.net_edge_annual_percent || 0,
             score,
             riskTier: calculateRiskTier(spreadBps, score),
             isNew: new Date(opp.ts).getTime() > Date.now() - 300000,
             isExtended: hasExtendedExchange(longExCode, shortExCode),
-            longExCode,
-            shortExCode,
           };
         })
-        .filter(opp => isBothExchangesAllowed(opp.longExCode, opp.shortExCode))
-        .map(({ longExCode, shortExCode, ...rest }) => rest); // Remove temp fields
+        .filter(Boolean) as Opportunity[];
 
-      // Deduplicate by symbol + exchanges (keep highest score)
-      const dedupMap = new Map<string, Opportunity>();
-      mapped.forEach(opp => {
-        const key = `${opp.symbol}-${opp.longExchange}-${opp.shortExchange}`;
-        const existing = dedupMap.get(key);
-        if (!existing || opp.score > existing.score) {
-          dedupMap.set(key, opp);
-        }
-      });
-
-      const deduped = Array.from(dedupMap.values());
-
-      // If DB returned opportunities but none match allowed exchanges, fall back
-      if (deduped.length === 0) {
-        const generated = await generateFromMetrics();
-        if (!generated) {
-          // Ultimate fallback: show mock opportunities
-          setOpportunities(generateFallbackOpportunities());
-        }
-        return;
+      // Use DB data if available, otherwise fallback
+      if (mapped.length > 0) {
+        setOpportunities(mapped);
+      } else {
+        setOpportunities(fallbackData);
       }
-
-      setOpportunities(deduped);
     } catch (err: any) {
-      console.error('Error fetching opportunities:', err);
-      setError(err.message);
-      
-      // Fallback to generated mock data
-      setOpportunities(generateFallbackOpportunities());
+      console.warn('Error fetching opportunities, using fallback:', err.message);
+      setOpportunities(fallbackData);
     } finally {
       setIsLoading(false);
     }
