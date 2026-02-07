@@ -180,40 +180,55 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Get best opportunity
-    const best = validOpps[0];
-    const symbol = (best.symbols as any)?.display_name || 'Unknown';
-    const longExData = exchangeMap.get(best.long_exchange_id);
-    const shortExData = exchangeMap.get(best.short_exchange_id);
-    const longEx = longExData?.name || 'Binance';
-    const shortEx = shortExData?.name || 'OKX';
-    const spreadBps = Number(best.net_edge_8h_bps) || 0;
-    const rawScore = best.opportunity_score;
-    const entryScore = Math.round(Number(rawScore ?? 80));
+    // 6. Iterate through top opportunities to find one we don't have
+    let selectedOpp: typeof validOpps[0] | null = null;
+    let symbol = '';
+    let longEx = '';
+    let shortEx = '';
+    let spreadBps = 0;
+    let entryScore = 80;
 
-    log(`Best opportunity: ${symbol} L:${longEx} S:${shortEx} spread:${spreadBps}bps score:${rawScore}->${entryScore}`);
+    for (const opp of validOpps.slice(0, 10)) {
+      const oppSymbol = (opp.symbols as any)?.display_name || 'Unknown';
+      const oppSpreadBps = Number(opp.net_edge_8h_bps) || 0;
 
-    // Check minimum profit threshold
-    if (spreadBps < config.thresholds.safe.minProfitBps) {
-      log(`Spread ${spreadBps}bps below threshold ${config.thresholds.safe.minProfitBps}bps`);
-      await updateLastScan(supabase);
-      return new Response(JSON.stringify({ ok: true, skipped: 'low_spread' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      // Check minimum profit threshold first
+      if (oppSpreadBps < config.thresholds.safe.minProfitBps) {
+        log(`${oppSymbol}: Spread ${oppSpreadBps}bps below threshold, skipping`);
+        continue;
+      }
+
+      // Check if we already have position on this symbol
+      const { data: existing } = await supabase
+        .from('autopilot_positions')
+        .select('id')
+        .eq('symbol', oppSymbol)
+        .eq('status', 'open')
+        .limit(1);
+
+      if (existing && existing.length > 0) {
+        log(`${oppSymbol}: Already have position, trying next...`);
+        continue;
+      }
+
+      // Found a valid opportunity!
+      selectedOpp = opp;
+      symbol = oppSymbol;
+      const longExData = exchangeMap.get(opp.long_exchange_id);
+      const shortExData = exchangeMap.get(opp.short_exchange_id);
+      longEx = longExData?.name || 'Binance';
+      shortEx = shortExData?.name || 'OKX';
+      spreadBps = oppSpreadBps;
+      entryScore = Math.round(Number(opp.opportunity_score ?? 80));
+      
+      log(`Selected: ${symbol} L:${longEx} S:${shortEx} spread:${spreadBps}bps score:${entryScore}`);
+      break;
     }
 
-    // 6. Check if we already have position on this symbol
-    const { data: existingPos } = await supabase
-      .from('autopilot_positions')
-      .select('id')
-      .eq('symbol', symbol)
-      .eq('status', 'open')
-      .limit(1);
-
-    if (existingPos && existingPos.length > 0) {
-      log(`Already have position on ${symbol}, skipping`);
+    if (!selectedOpp) {
+      log('All top opportunities already have positions or below threshold');
       await updateLastScan(supabase);
-      return new Response(JSON.stringify({ ok: true, skipped: 'duplicate_symbol' }), {
+      return new Response(JSON.stringify({ ok: true, skipped: 'all_duplicates' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
@@ -224,6 +239,7 @@ Deno.serve(async (req) => {
                       symbol.includes('SOL') ? 180 : 100;
 
     const hedgeId = crypto.randomUUID();
+    const riskTier = String(selectedOpp.risk_tier || 'safe');
     
     // Build position data with correct types:
     // - entry_score: integer (must round decimal)
@@ -233,7 +249,7 @@ Deno.serve(async (req) => {
       symbol,
       long_exchange: longEx,
       short_exchange: shortEx,
-      risk_tier: String(best.risk_tier || 'safe'),
+      risk_tier: riskTier,
       size_eur: config.capital.hedgeSizeEur,
       entry_long_price: mockPrice,
       entry_short_price: mockPrice * 1.0001,
